@@ -31,6 +31,12 @@ class StatsViewModel(
     private val _moodCounts = MutableStateFlow<List<MoodCount>>(emptyList())
     val moodCounts: StateFlow<List<MoodCount>> = _moodCounts.asStateFlow()
     
+    private val _temperatureHistory = MutableStateFlow<List<Pair<Long, Float>>>(emptyList())
+    val temperatureHistory: StateFlow<List<Pair<Long, Float>>> = _temperatureHistory.asStateFlow()
+    
+    private val _feedingHistory = MutableStateFlow<List<Pair<Long, Int>>>(emptyList())
+    val feedingHistory: StateFlow<List<Pair<Long, Int>>> = _feedingHistory.asStateFlow()
+    
     init {
         loadStats()
     }
@@ -58,6 +64,24 @@ class StatsViewModel(
         _moodCounts.value = moodMap.map { (mood, count) ->
             MoodCount(mood, count)
         }.sortedByDescending { it.count }
+        
+        // Temperature history (last 7 days)
+        val now = System.currentTimeMillis()
+        val sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000L)
+        _temperatureHistory.value = entries
+            .filter { it.temperature != null && it.timestamp >= sevenDaysAgo }
+            .sortedBy { it.timestamp }
+            .map { Pair(it.timestamp, it.temperature!!) }
+        
+        // Feeding history (last 7 days, only bottle with amount)
+        _feedingHistory.value = entries
+            .filter { 
+                it.category == Category.FEEDING && 
+                it.feedingAmount != null && 
+                it.timestamp >= sevenDaysAgo 
+            }
+            .sortedBy { it.timestamp }
+            .map { Pair(it.timestamp, it.feedingAmount!!) }
     }
 }
 

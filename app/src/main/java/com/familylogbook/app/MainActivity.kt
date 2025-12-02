@@ -20,15 +20,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.familylogbook.app.data.repository.InMemoryLogbookRepository
 import com.familylogbook.app.domain.classifier.EntryClassifier
 import com.familylogbook.app.domain.repository.LogbookRepository
 import com.familylogbook.app.ui.navigation.Screen
 import com.familylogbook.app.ui.screen.AddEntryScreen
+import com.familylogbook.app.ui.screen.ChildProfileScreen
 import com.familylogbook.app.ui.screen.HomeScreen
 import com.familylogbook.app.ui.screen.SettingsScreen
 import com.familylogbook.app.ui.screen.StatsScreen
@@ -129,6 +132,9 @@ fun FamilyLogbookApp(
                     viewModel = viewModel,
                     onNavigateToAddEntry = {
                         navController.navigate(Screen.AddEntry.route)
+                    },
+                    onNavigateToChildProfile = { childId ->
+                        navController.navigate(Screen.ChildProfile.createRoute(childId))
                     }
                 )
             }
@@ -157,6 +163,20 @@ fun FamilyLogbookApp(
                     SettingsViewModel(repository)
                 }
                 SettingsScreen(viewModel = viewModel)
+            }
+            
+            composable(
+                route = Screen.ChildProfile.ROUTE,
+                arguments = listOf(navArgument("childId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val childId = backStackEntry.arguments?.getString("childId") ?: return@composable
+                val viewModel: HomeViewModel = viewModel {
+                    HomeViewModel(repository)
+                }
+                ChildProfileScreen(
+                    childId = childId,
+                    viewModel = viewModel
+                )
             }
         }
     }

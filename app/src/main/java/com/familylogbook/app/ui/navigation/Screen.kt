@@ -5,5 +5,12 @@ sealed class Screen(val route: String) {
     object Stats : Screen("stats")
     object Settings : Screen("settings")
     object AddEntry : Screen("add_entry")
+    
+    data class ChildProfile(val childId: String) : Screen("child_profile/{childId}") {
+        companion object {
+            const val ROUTE = "child_profile/{childId}"
+            fun createRoute(childId: String) = "child_profile/$childId"
+        }
+    }
 }
 

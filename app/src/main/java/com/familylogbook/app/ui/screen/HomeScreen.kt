@@ -1,6 +1,7 @@
 package com.familylogbook.app.ui.screen
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -30,7 +31,8 @@ import java.util.*
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
-    onNavigateToAddEntry: () -> Unit
+    onNavigateToAddEntry: () -> Unit,
+    onNavigateToChildProfile: (String) -> Unit = {}
 ) {
     val entries by viewModel.entries.collectAsState()
     val children by viewModel.children.collectAsState()
@@ -54,7 +56,10 @@ fun HomeScreen(
                     LogEntryCard(
                         entry = entry,
                         child = child,
-                        viewModel = viewModel
+                        viewModel = viewModel,
+                        onChildClick = { childId ->
+                            onNavigateToChildProfile(childId)
+                        }
                     )
                 }
             }
@@ -76,7 +81,8 @@ fun HomeScreen(
 fun LogEntryCard(
     entry: LogEntry,
     child: Child?,
-    viewModel: HomeViewModel
+    viewModel: HomeViewModel,
+    onChildClick: (String) -> Unit = {}
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -107,7 +113,9 @@ fun LogEntryCard(
                         Surface(
                             color = Color(android.graphics.Color.parseColor(child.avatarColor)),
                             shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clickable { onChildClick(child.id) }
                         ) {
                             Box(
                                 modifier = Modifier.fillMaxSize(),
@@ -122,7 +130,8 @@ fun LogEntryCard(
                         Text(
                             text = child.name,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
+                            fontSize = 14.sp,
+                            modifier = Modifier.clickable { onChildClick(child.id) }
                         )
                     } else {
                         Text(

@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -18,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.familylogbook.app.domain.model.Child
+import com.familylogbook.app.domain.model.FeedingType
 import com.familylogbook.app.ui.viewmodel.AddEntryViewModel
 import kotlinx.coroutines.launch
 
@@ -29,6 +32,10 @@ fun AddEntryScreen(
     val children by viewModel.children.collectAsState()
     val selectedChildId by viewModel.selectedChildId.collectAsState()
     val entryText by viewModel.entryText.collectAsState()
+    val isFeedingActive by viewModel.isFeedingActive.collectAsState()
+    val feedingElapsedSeconds by viewModel.feedingElapsedSeconds.collectAsState()
+    val selectedFeedingType by viewModel.selectedFeedingType.collectAsState()
+    val bottleAmount by viewModel.bottleAmount.collectAsState()
     val scope = rememberCoroutineScope()
     
     Scaffold(
@@ -65,6 +72,38 @@ fun AddEntryScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
+            // Quick Feeding Tracker
+            if (!isFeedingActive) {
+                QuickFeedingButtons(
+                    children = children,
+                    selectedChildId = selectedChildId,
+                    onSelectChild = { viewModel.setSelectedChild(it) },
+                    onStartFeeding = { type ->
+                        if (selectedChildId != null) {
+                            viewModel.startFeeding(type)
+                        }
+                    },
+                    enabled = selectedChildId != null
+                )
+            } else {
+                FeedingTimerCard(
+                    elapsedSeconds = feedingElapsedSeconds,
+                    feedingType = selectedFeedingType,
+                    bottleAmount = bottleAmount,
+                    onBottleAmountChange = { viewModel.setBottleAmount(it) },
+                    onStop = { viewModel.stopFeeding() },
+                    onSave = {
+                        scope.launch {
+                            if (viewModel.saveFeedingEntry()) {
+                                onNavigateBack()
+                            }
+                        }
+                    }
+                )
+            }
+            
+            Divider()
+            
             // Child selection
             Text(
                 text = "Select Child (Optional)",

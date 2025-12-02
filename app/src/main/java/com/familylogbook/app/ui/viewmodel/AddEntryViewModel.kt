@@ -3,9 +3,13 @@ package com.familylogbook.app.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.familylogbook.app.domain.classifier.EntryClassifier
+import com.familylogbook.app.domain.model.Category
 import com.familylogbook.app.domain.model.Child
+import com.familylogbook.app.domain.model.FeedingType
 import com.familylogbook.app.domain.model.LogEntry
 import com.familylogbook.app.domain.repository.LogbookRepository
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,8 +29,31 @@ class AddEntryViewModel(
     private val _entryText = MutableStateFlow("")
     val entryText: StateFlow<String> = _entryText.asStateFlow()
     
+    // Feeding tracking
+    private val _isFeedingActive = MutableStateFlow(false)
+    val isFeedingActive: StateFlow<Boolean> = _isFeedingActive.asStateFlow()
+    
+    private val _feedingStartTime = MutableStateFlow<Long?>(null)
+    val feedingStartTime: StateFlow<Long?> = _feedingStartTime.asStateFlow()
+    
+    private val _feedingElapsedSeconds = MutableStateFlow(0L)
+    val feedingElapsedSeconds: StateFlow<Long> = _feedingElapsedSeconds.asStateFlow()
+    
+    private val _selectedFeedingType = MutableStateFlow<FeedingType?>(null)
+    val selectedFeedingType: StateFlow<FeedingType?> = _selectedFeedingType.asStateFlow()
+    
+    private val _bottleAmount = MutableStateFlow("")
+    val bottleAmount: StateFlow<String> = _bottleAmount.asStateFlow()
+    
+    private var feedingTimerJob: Job? = null
+    
     init {
         loadChildren()
+    }
+    
+    override fun onCleared() {
+        super.onCleared()
+        feedingTimerJob?.cancel()
     }
     
     private fun loadChildren() {
@@ -43,6 +70,75 @@ class AddEntryViewModel(
     
     fun setEntryText(text: String) {
         _entryText.value = text
+    }
+    
+    fun startFeeding(feedingType: FeedingType) {
+        _isFeedingActive.value = true
+        _selectedFeedingType.value = feedingType
+        _feedingStartTime.value = System.currentTimeMillis()
+        _feedingElapsedSeconds.value = 0L
+        
+        // Start timer
+        feedingTimerJob?.cancel()
+        feedingTimerJob = viewModelScope.launch {
+            while (_isFeedingActive.value) {
+                delay(1000)
+                _feedingElapsedSeconds.value = _feedingElapsedSeconds.value + 1
+            }
+        }
+    }
+    
+    fun stopFeeding() {
+        _isFeedingActive.value = false
+        feedingTimerJob?.cancel()
+    }
+    
+    fun setBottleAmount(amount: String) {
+        _bottleAmount.value = amount
+    }
+    
+    suspend fun saveFeedingEntry(): Boolean {
+        val childId = _selectedChildId.value
+        if (childId == null) {
+            return false // Must select a child for feeding
+        }
+        
+        val startTime = _feedingStartTime.value ?: System.currentTimeMillis()
+        val feedingType = _selectedFeedingType.value ?: return false
+        
+        val durationMinutes = _feedingElapsedSeconds.value / 60
+        
+        val text = when (feedingType) {
+            FeedingType.BREAST_LEFT -> "Dojenje (lijeva dojka), trajalo ${durationMinutes} minuta."
+            FeedingType.BREAST_RIGHT -> "Dojenje (desna dojka), trajalo ${durationMinutes} minuta."
+            FeedingType.BOTTLE -> {
+                val amount = _bottleAmount.value.toIntOrNull() ?: 0
+                "Bočica ${amount}ml, trajalo ${durationMinutes} minuta."
+            }
+        }
+        
+        val classification = classifier.classifyEntry(text)
+        val entry = LogEntry(
+            childId = childId,
+            timestamp = startTime,
+            rawText = text,
+            category = Category.FEEDING,
+            tags = classification.tags,
+            mood = null,
+            feedingType = feedingType,
+            feedingAmount = if (feedingType == FeedingType.BOTTLE) _bottleAmount.value.toIntOrNull() else null
+        )
+        
+        repository.addEntry(entry)
+        
+        // Reset feeding state
+        stopFeeding()
+        _selectedFeedingType.value = null
+        _bottleAmount.value = ""
+        _feedingStartTime.value = null
+        _feedingElapsedSeconds.value = 0L
+        
+        return true
     }
     
     suspend fun saveEntry(): Boolean {

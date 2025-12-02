@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -27,6 +28,8 @@ fun StatsScreen(
 ) {
     val categoryCounts by viewModel.categoryCounts.collectAsState()
     val moodCounts by viewModel.moodCounts.collectAsState()
+    val temperatureHistory by viewModel.temperatureHistory.collectAsState()
+    val feedingHistory by viewModel.feedingHistory.collectAsState()
     
     Column(
         modifier = Modifier
@@ -80,6 +83,175 @@ fun StatsScreen(
                 MoodStatRow(moodCount = moodCount)
             }
         }
+        
+        Divider()
+        
+        // Temperature History
+        Text(
+            text = "Temperature History (Last 7 Days)",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        
+        if (temperatureHistory.isEmpty()) {
+            Text(
+                text = "No temperature data yet",
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            )
+        } else {
+            SimpleTemperatureChart(temperatureHistory = temperatureHistory)
+        }
+        
+        Divider()
+        
+        // Feeding History
+        Text(
+            text = "Feeding History (Last 7 Days)",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        
+        if (feedingHistory.isEmpty()) {
+            Text(
+                text = "No feeding data yet",
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            )
+        } else {
+            SimpleFeedingChart(feedingHistory = feedingHistory)
+        }
+    }
+}
+
+@Composable
+fun SimpleTemperatureChart(temperatureHistory: List<Pair<Long, Float>>) {
+    if (temperatureHistory.isEmpty()) return
+    
+    val maxTemp = temperatureHistory.maxOfOrNull { it.second } ?: 40f
+    val minTemp = temperatureHistory.minOfOrNull { it.second } ?: 36f
+    val tempRange = maxTemp - minTemp
+    
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            temperatureHistory.forEach { (timestamp, temp) ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = java.text.SimpleDateFormat("MMM dd, HH:mm", java.util.Locale.getDefault())
+                            .format(java.util.Date(timestamp)),
+                        fontSize = 12.sp
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(100.dp)
+                                .height(8.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.surfaceVariant,
+                                    RoundedCornerShape(4.dp)
+                                )
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .width(
+                                        ((temp - minTemp) / tempRange * 100).dp.coerceAtLeast(4.dp)
+                                    )
+                                    .background(
+                                        if (temp >= 38f) MaterialTheme.colorScheme.error
+                                        else MaterialTheme.colorScheme.primary,
+                                        RoundedCornerShape(4.dp)
+                                    )
+                            )
+                        }
+                        Text(
+                            text = "${temp}°C",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SimpleFeedingChart(feedingHistory: List<Pair<Long, Int>>) {
+    if (feedingHistory.isEmpty()) return
+    
+    val maxAmount = feedingHistory.maxOfOrNull { it.second } ?: 200
+    
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            feedingHistory.forEach { (timestamp, amount) ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = java.text.SimpleDateFormat("MMM dd, HH:mm", java.util.Locale.getDefault())
+                            .format(java.util.Date(timestamp)),
+                        fontSize = 12.sp
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(100.dp)
+                                .height(8.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.surfaceVariant,
+                                    RoundedCornerShape(4.dp)
+                                )
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .width(
+                                        ((amount.toFloat() / maxAmount * 100).dp.coerceAtLeast(4.dp))
+                                    )
+                                    .background(
+                                        MaterialTheme.colorScheme.tertiary,
+                                        RoundedCornerShape(4.dp)
+                                    )
+                            )
+                        }
+                        Text(
+                            text = "${amount}ml",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -92,6 +264,7 @@ fun CategoryStatRow(categoryCount: CategoryCount) {
         Category.DEVELOPMENT -> "Development" to Color(0xFF95E1D3)
         Category.KINDERGARTEN_SCHOOL -> "School" to Color(0xFFAA96DA)
         Category.HOME -> "Home" to Color(0xFFF38181)
+        Category.FEEDING -> "Feeding" to Color(0xFFFFB84D)
         Category.OTHER -> "Other" to Color(0xFFCCCCCC)
     }
     
