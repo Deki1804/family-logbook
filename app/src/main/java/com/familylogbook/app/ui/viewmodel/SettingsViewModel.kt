@@ -4,6 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.familylogbook.app.data.export.ExportManager
 import com.familylogbook.app.domain.model.Child
+import com.familylogbook.app.domain.model.Person
+import com.familylogbook.app.domain.model.Entity
+import com.familylogbook.app.domain.model.PersonType
+import com.familylogbook.app.domain.model.EntityType
 import com.familylogbook.app.domain.model.LogEntry
 import com.familylogbook.app.domain.repository.LogbookRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,6 +24,12 @@ class SettingsViewModel(
     private val _children = MutableStateFlow<List<Child>>(emptyList())
     val children: StateFlow<List<Child>> = _children.asStateFlow()
     
+    private val _persons = MutableStateFlow<List<Person>>(emptyList())
+    val persons: StateFlow<List<Person>> = _persons.asStateFlow()
+    
+    private val _entities = MutableStateFlow<List<Entity>>(emptyList())
+    val entities: StateFlow<List<Entity>> = _entities.asStateFlow()
+    
     private val _entries = MutableStateFlow<List<LogEntry>>(emptyList())
     val entries: StateFlow<List<LogEntry>> = _entries.asStateFlow()
     
@@ -29,8 +39,28 @@ class SettingsViewModel(
     private val _newChildEmoji = MutableStateFlow("👶")
     val newChildEmoji: StateFlow<String> = _newChildEmoji.asStateFlow()
     
+    private val _newPersonName = MutableStateFlow("")
+    val newPersonName: StateFlow<String> = _newPersonName.asStateFlow()
+    
+    private val _newPersonType = MutableStateFlow(PersonType.CHILD)
+    val newPersonType: StateFlow<PersonType> = _newPersonType.asStateFlow()
+    
+    private val _newPersonEmoji = MutableStateFlow("👶")
+    val newPersonEmoji: StateFlow<String> = _newPersonEmoji.asStateFlow()
+    
+    private val _newEntityName = MutableStateFlow("")
+    val newEntityName: StateFlow<String> = _newEntityName.asStateFlow()
+    
+    private val _newEntityType = MutableStateFlow(EntityType.OTHER)
+    val newEntityType: StateFlow<EntityType> = _newEntityType.asStateFlow()
+    
+    private val _newEntityEmoji = MutableStateFlow("🚗")
+    val newEntityEmoji: StateFlow<String> = _newEntityEmoji.asStateFlow()
+    
     init {
         loadChildren()
+        loadPersons()
+        loadEntities()
         loadEntries()
     }
     
@@ -38,6 +68,22 @@ class SettingsViewModel(
         viewModelScope.launch {
             repository.getAllChildren().collect { childrenList ->
                 _children.value = childrenList
+            }
+        }
+    }
+    
+    private fun loadPersons() {
+        viewModelScope.launch {
+            repository.getAllPersons().collect { personsList ->
+                _persons.value = personsList
+            }
+        }
+    }
+    
+    private fun loadEntities() {
+        viewModelScope.launch {
+            repository.getAllEntities().collect { entitiesList ->
+                _entities.value = entitiesList
             }
         }
     }
@@ -93,6 +139,115 @@ class SettingsViewModel(
             true
         } catch (e: Exception) {
             android.util.Log.e("SettingsViewModel", "Error deleting child: ${e.message}")
+            false
+        }
+    }
+    
+    // Person methods
+    fun setNewPersonName(name: String) {
+        _newPersonName.value = name
+    }
+    
+    fun setNewPersonType(type: PersonType) {
+        _newPersonType.value = type
+    }
+    
+    fun setNewPersonEmoji(emoji: String) {
+        _newPersonEmoji.value = emoji
+    }
+    
+    suspend fun addPerson(): Boolean {
+        val name = _newPersonName.value.trim()
+        if (name.isEmpty()) {
+            return false
+        }
+        
+        return try {
+            val colors = listOf("#FF6B6B", "#4ECDC4", "#FF6B9D", "#95E1D3", "#F38181", "#AA96DA", "#FCBAD3", "#A8E6CF")
+            val randomColor = colors.random()
+            
+            val person = Person(
+                name = name,
+                type = _newPersonType.value,
+                avatarColor = randomColor,
+                emoji = _newPersonEmoji.value,
+                relationship = name
+            )
+            
+            repository.addPerson(person)
+            
+            // Reset form
+            _newPersonName.value = ""
+            _newPersonType.value = PersonType.CHILD
+            _newPersonEmoji.value = "👶"
+            
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("SettingsViewModel", "Error adding person: ${e.message}")
+            false
+        }
+    }
+    
+    suspend fun deletePerson(personId: String): Boolean {
+        return try {
+            repository.deletePerson(personId)
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("SettingsViewModel", "Error deleting person: ${e.message}")
+            false
+        }
+    }
+    
+    // Entity methods
+    fun setNewEntityName(name: String) {
+        _newEntityName.value = name
+    }
+    
+    fun setNewEntityType(type: EntityType) {
+        _newEntityType.value = type
+    }
+    
+    fun setNewEntityEmoji(emoji: String) {
+        _newEntityEmoji.value = emoji
+    }
+    
+    suspend fun addEntity(): Boolean {
+        val name = _newEntityName.value.trim()
+        if (name.isEmpty()) {
+            return false
+        }
+        
+        return try {
+            val colors = listOf("#FF6B6B", "#4ECDC4", "#FF6B9D", "#95E1D3", "#F38181", "#AA96DA", "#FCBAD3", "#A8E6CF")
+            val randomColor = colors.random()
+            
+            val entity = Entity(
+                name = name,
+                type = _newEntityType.value,
+                avatarColor = randomColor,
+                emoji = _newEntityEmoji.value
+            )
+            
+            repository.addEntity(entity)
+            
+            // Reset form
+            _newEntityName.value = ""
+            _newEntityType.value = EntityType.OTHER
+            _newEntityEmoji.value = "🚗"
+            
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("SettingsViewModel", "Error adding entity: ${e.message}")
+            false
+        }
+    }
+    
+    suspend fun deleteEntity(entityId: String): Boolean {
+        return try {
+            repository.deleteEntity(entityId)
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("SettingsViewModel", "Error deleting entity: ${e.message}")
             false
         }
     }

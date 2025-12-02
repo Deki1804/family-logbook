@@ -41,6 +41,8 @@ import kotlinx.coroutines.runBlocking
 import com.familylogbook.app.ui.navigation.Screen
 import com.familylogbook.app.ui.screen.AddEntryScreen
 import com.familylogbook.app.ui.screen.ChildProfileScreen
+import com.familylogbook.app.ui.screen.PersonProfileScreen
+import com.familylogbook.app.ui.screen.CategoryDetailScreen
 import com.familylogbook.app.ui.screen.HomeScreen
 import com.familylogbook.app.ui.screen.LoginScreen
 import com.familylogbook.app.ui.screen.SettingsScreen
@@ -199,10 +201,41 @@ fun FamilyLogbookApp(
             }
             
             composable(Screen.Stats.route) {
-                val viewModel: StatsViewModel = viewModel {
+                val statsViewModel: StatsViewModel = viewModel {
                     StatsViewModel(repository)
                 }
-                StatsScreen(viewModel = viewModel)
+                val homeViewModel: HomeViewModel = viewModel {
+                    HomeViewModel(repository)
+                }
+                StatsScreen(
+                    viewModel = statsViewModel,
+                    onCategoryClick = { category ->
+                        navController.navigate("category_detail/${category.name}")
+                    }
+                )
+            }
+            
+            composable("category_detail/{categoryName}") { backStackEntry ->
+                val categoryName = backStackEntry.arguments?.getString("categoryName") ?: ""
+                val category = try {
+                    com.familylogbook.app.domain.model.Category.valueOf(categoryName)
+                } catch (e: Exception) {
+                    com.familylogbook.app.domain.model.Category.OTHER
+                }
+                val statsViewModel: StatsViewModel = viewModel {
+                    StatsViewModel(repository)
+                }
+                val homeViewModel: HomeViewModel = viewModel {
+                    HomeViewModel(repository)
+                }
+                CategoryDetailScreen(
+                    category = category,
+                    statsViewModel = statsViewModel,
+                    homeViewModel = homeViewModel,
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    }
+                )
             }
             
             composable(Screen.Settings.route) {
@@ -247,6 +280,43 @@ fun FamilyLogbookApp(
                 ChildProfileScreen(
                     childId = childId,
                     viewModel = viewModel
+                )
+            }
+            
+            composable(
+                route = Screen.PersonProfile.ROUTE,
+                arguments = listOf(navArgument("personId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val personId = backStackEntry.arguments?.getString("personId") ?: return@composable
+                val viewModel: HomeViewModel = viewModel {
+                    HomeViewModel(repository)
+                }
+                PersonProfileScreen(
+                    personId = personId,
+                    viewModel = viewModel
+                )
+            }
+            
+            composable("category_detail/{categoryName}") { backStackEntry ->
+                val categoryName = backStackEntry.arguments?.getString("categoryName") ?: ""
+                val category = try {
+                    com.familylogbook.app.domain.model.Category.valueOf(categoryName)
+                } catch (e: Exception) {
+                    com.familylogbook.app.domain.model.Category.OTHER
+                }
+                val statsViewModel: StatsViewModel = viewModel {
+                    StatsViewModel(repository)
+                }
+                val homeViewModel: HomeViewModel = viewModel {
+                    HomeViewModel(repository)
+                }
+                CategoryDetailScreen(
+                    category = category,
+                    statsViewModel = statsViewModel,
+                    homeViewModel = homeViewModel,
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    }
                 )
             }
         }

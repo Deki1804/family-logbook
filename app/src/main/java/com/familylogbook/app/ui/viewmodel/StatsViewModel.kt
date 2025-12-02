@@ -37,13 +37,21 @@ class StatsViewModel(
     private val _feedingHistory = MutableStateFlow<List<Pair<Long, Int>>>(emptyList())
     val feedingHistory: StateFlow<List<Pair<Long, Int>>> = _feedingHistory.asStateFlow()
     
+    private val _allEntries = MutableStateFlow<List<LogEntry>>(emptyList())
+    val allEntries: StateFlow<List<LogEntry>> = _allEntries.asStateFlow()
+    
     init {
         loadStats()
+    }
+    
+    fun getEntriesByCategory(category: Category): List<LogEntry> {
+        return _allEntries.value.filter { it.category == category }.sortedByDescending { it.timestamp }
     }
     
     private fun loadStats() {
         viewModelScope.launch {
             repository.getAllEntries().collect { entries ->
+                _allEntries.value = entries
                 computeStats(entries)
             }
         }

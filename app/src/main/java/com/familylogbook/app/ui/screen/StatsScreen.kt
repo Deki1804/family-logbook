@@ -1,6 +1,7 @@
 package com.familylogbook.app.ui.screen
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -25,7 +26,8 @@ import com.familylogbook.app.ui.viewmodel.StatsViewModel
 
 @Composable
 fun StatsScreen(
-    viewModel: StatsViewModel
+    viewModel: StatsViewModel,
+    onCategoryClick: (Category) -> Unit = {}
 ) {
     val categoryCounts by viewModel.categoryCounts.collectAsState()
     val moodCounts by viewModel.moodCounts.collectAsState()
@@ -45,7 +47,7 @@ fun StatsScreen(
             fontWeight = FontWeight.Bold
         )
         
-        // Category stats
+        // Category stats (clickable)
         Text(
             text = "Entries by Category",
             fontSize = 20.sp,
@@ -60,7 +62,10 @@ fun StatsScreen(
             )
         } else {
             categoryCounts.forEach { categoryCount ->
-                CategoryStatRow(categoryCount = categoryCount)
+                CategoryStatRow(
+                    categoryCount = categoryCount,
+                    onClick = { onCategoryClick(categoryCount.category) }
+                )
             }
         }
         
@@ -257,15 +262,24 @@ fun SimpleFeedingChart(feedingHistory: List<Pair<Long, Int>>) {
 }
 
 @Composable
-fun CategoryStatRow(categoryCount: CategoryCount) {
+fun CategoryStatRow(
+    categoryCount: CategoryCount,
+    onClick: () -> Unit = {}
+) {
     val (label, color) = when (categoryCount.category) {
         Category.HEALTH -> "Health" to Color(0xFFFF6B6B)
         Category.SLEEP -> "Sleep" to Color(0xFF4ECDC4)
         Category.MOOD -> "Mood" to Color(0xFFFFD93D)
         Category.DEVELOPMENT -> "Development" to Color(0xFF95E1D3)
         Category.KINDERGARTEN_SCHOOL -> "School" to Color(0xFFAA96DA)
+        Category.SCHOOL -> "School" to Color(0xFFAA96DA)
         Category.HOME -> "Home" to Color(0xFFF38181)
+        Category.HOUSE -> "House" to Color(0xFFF38181)
         Category.FEEDING -> "Feeding" to Color(0xFFFFB84D)
+        Category.AUTO -> "Auto" to Color(0xFFFF6B6B)
+        Category.FINANCE -> "Finance" to Color(0xFF95E1D3)
+        Category.WORK -> "Work" to Color(0xFFAA96DA)
+        Category.SHOPPING -> "Shopping" to Color(0xFFFFB84D)
         Category.OTHER -> "Other" to Color(0xFFCCCCCC)
     }
     
