@@ -8,7 +8,6 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.material3.TabRow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -50,7 +49,7 @@ fun PersonProfileScreen(
         return
     }
     
-    val pagerState = rememberPagerState(pageCount = { 5 })
+    val pagerState = rememberPagerState(initialPage = 0) { 5 }
     val scope = rememberCoroutineScope()
     
     Scaffold(
