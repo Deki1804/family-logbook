@@ -222,6 +222,7 @@ fun LogEntryCard(
                 )
             }
         }
+        }
         
         // Advice Card (if applicable)
         viewModel.getAdviceForEntry(entry)?.let { advice ->
