@@ -51,13 +51,13 @@ fun ExportSection(viewModel: SettingsViewModel) {
                         val jsonString = inputStream?.bufferedReader().use { it?.readText() ?: "" }
                         
                         if (jsonString.isNotEmpty()) {
-                            val importResult = viewModel.importFromJson(jsonString)
-                            when (importResult) {
+                            val result = viewModel.importFromJson(jsonString)
+                            when (result) {
                                 is SettingsViewModel.ImportResult.Success -> {
-                                    importResult = "Successfully imported ${importResult.childrenAdded} children and ${importResult.entriesAdded} entries"
+                                    importResult = "Successfully imported ${result.childrenAdded} children and ${result.entriesAdded} entries"
                                 }
                                 is SettingsViewModel.ImportResult.Error -> {
-                                    importResult = "Error: ${importResult.message}"
+                                    importResult = "Error: ${result.message}"
                                 }
                             }
                             showImportDialog = true
