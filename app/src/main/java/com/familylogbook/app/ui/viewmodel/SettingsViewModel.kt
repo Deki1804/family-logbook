@@ -2,7 +2,9 @@ package com.familylogbook.app.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.familylogbook.app.data.export.ExportManager
 import com.familylogbook.app.domain.model.Child
+import com.familylogbook.app.domain.model.LogEntry
 import com.familylogbook.app.domain.repository.LogbookRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,8 +15,13 @@ class SettingsViewModel(
     private val repository: LogbookRepository
 ) : ViewModel() {
     
+    private val exportManager = ExportManager()
+    
     private val _children = MutableStateFlow<List<Child>>(emptyList())
     val children: StateFlow<List<Child>> = _children.asStateFlow()
+    
+    private val _entries = MutableStateFlow<List<LogEntry>>(emptyList())
+    val entries: StateFlow<List<LogEntry>> = _entries.asStateFlow()
     
     private val _newChildName = MutableStateFlow("")
     val newChildName: StateFlow<String> = _newChildName.asStateFlow()
@@ -24,12 +31,21 @@ class SettingsViewModel(
     
     init {
         loadChildren()
+        loadEntries()
     }
     
     private fun loadChildren() {
         viewModelScope.launch {
             repository.getAllChildren().collect { childrenList ->
                 _children.value = childrenList
+            }
+        }
+    }
+    
+    private fun loadEntries() {
+        viewModelScope.launch {
+            repository.getAllEntries().collect { entriesList ->
+                _entries.value = entriesList
             }
         }
     }
@@ -68,6 +84,14 @@ class SettingsViewModel(
     
     suspend fun deleteChild(childId: String) {
         repository.deleteChild(childId)
+    }
+    
+    fun exportToJson(): String {
+        return exportManager.exportToJson(_children.value, _entries.value)
+    }
+    
+    fun exportToCsv(): String {
+        return exportManager.exportToCsv(_children.value, _entries.value)
     }
 }
 
