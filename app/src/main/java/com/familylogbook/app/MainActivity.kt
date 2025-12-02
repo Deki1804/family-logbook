@@ -26,9 +26,14 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.familylogbook.app.data.repository.FirestoreLogbookRepository
+import com.familylogbook.app.data.repository.FirestoreSeedData
 import com.familylogbook.app.data.repository.InMemoryLogbookRepository
 import com.familylogbook.app.domain.classifier.EntryClassifier
 import com.familylogbook.app.domain.repository.LogbookRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import com.familylogbook.app.ui.navigation.Screen
 import com.familylogbook.app.ui.screen.AddEntryScreen
 import com.familylogbook.app.ui.screen.ChildProfileScreen
@@ -44,11 +49,29 @@ import com.familylogbook.app.ui.viewmodel.StatsViewModel
 class MainActivity : ComponentActivity() {
     
     // Simple DI - in a real app, use Hilt or Koin
-    private val repository: LogbookRepository = InMemoryLogbookRepository()
+    // Switch between InMemoryLogbookRepository (for testing) and FirestoreLogbookRepository (for production)
+    private val useFirestore = true // Set to false to use in-memory repository
+    private val repository: LogbookRepository = if (useFirestore) {
+        FirestoreLogbookRepository()
+    } else {
+        InMemoryLogbookRepository()
+    }
     private val classifier: EntryClassifier = EntryClassifier()
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Seed Firestore with sample data if using Firestore and database is empty
+        if (useFirestore) {
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    FirestoreSeedData.seedIfEmpty()
+                } catch (e: Exception) {
+                    // Ignore errors - database might already have data
+                }
+            }
+        }
+        
         setContent {
             FamilyLogbookTheme {
                 Surface(
