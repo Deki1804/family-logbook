@@ -264,8 +264,14 @@ fun CategoryChip(category: Category) {
         Category.MOOD -> "Mood" to Color(0xFFFFD93D)
         Category.DEVELOPMENT -> "Development" to Color(0xFF95E1D3)
         Category.KINDERGARTEN_SCHOOL -> "School" to Color(0xFFAA96DA)
+        Category.SCHOOL -> "School" to Color(0xFFAA96DA)
         Category.HOME -> "Home" to Color(0xFFF38181)
+        Category.HOUSE -> "House" to Color(0xFFF38181)
         Category.FEEDING -> "Feeding" to Color(0xFFFFB84D)
+        Category.AUTO -> "Auto" to Color(0xFFFF6B6B)
+        Category.FINANCE -> "Finance" to Color(0xFF95E1D3)
+        Category.WORK -> "Work" to Color(0xFFAA96DA)
+        Category.SHOPPING -> "Shopping" to Color(0xFFFFB84D)
         Category.OTHER -> "Other" to Color(0xFFCCCCCC)
     }
     

@@ -34,6 +34,7 @@ import com.familylogbook.app.domain.model.Entity
 import com.familylogbook.app.domain.model.PersonType
 import com.familylogbook.app.domain.model.EntityType
 import com.familylogbook.app.ui.viewmodel.SettingsViewModel
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 @Composable
@@ -173,6 +174,7 @@ fun SettingsScreen(
                 }
             }
         }
+        }
         
         // Children list
         item {
@@ -291,7 +293,7 @@ fun ChildListItem(
 @Composable
 fun FamilySection(
     viewModel: SettingsViewModel,
-    scope: androidx.coroutines.CoroutineScope
+    scope: CoroutineScope
 ) {
     val persons by viewModel.persons.collectAsState()
     val entities by viewModel.entities.collectAsState()
