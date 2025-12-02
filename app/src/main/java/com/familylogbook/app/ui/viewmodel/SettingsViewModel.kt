@@ -64,26 +64,37 @@ class SettingsViewModel(
             return false
         }
         
-        val colors = listOf("#FF6B6B", "#4ECDC4", "#FF6B9D", "#95E1D3", "#F38181", "#AA96DA", "#FCBAD3", "#A8E6CF")
-        val randomColor = colors.random()
-        
-        val child = Child(
-            name = name,
-            avatarColor = randomColor,
-            emoji = _newChildEmoji.value
-        )
-        
-        repository.addChild(child)
-        
-        // Reset form
-        _newChildName.value = ""
-        _newChildEmoji.value = "👶"
-        
-        return true
+        return try {
+            val colors = listOf("#FF6B6B", "#4ECDC4", "#FF6B9D", "#95E1D3", "#F38181", "#AA96DA", "#FCBAD3", "#A8E6CF")
+            val randomColor = colors.random()
+            
+            val child = Child(
+                name = name,
+                avatarColor = randomColor,
+                emoji = _newChildEmoji.value
+            )
+            
+            repository.addChild(child)
+            
+            // Reset form
+            _newChildName.value = ""
+            _newChildEmoji.value = "👶"
+            
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("SettingsViewModel", "Error adding child: ${e.message}")
+            false
+        }
     }
     
-    suspend fun deleteChild(childId: String) {
-        repository.deleteChild(childId)
+    suspend fun deleteChild(childId: String): Boolean {
+        return try {
+            repository.deleteChild(childId)
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("SettingsViewModel", "Error deleting child: ${e.message}")
+            false
+        }
     }
     
     fun exportToJson(): String {

@@ -106,39 +106,44 @@ class AddEntryViewModel(
         val startTime = _feedingStartTime.value ?: System.currentTimeMillis()
         val feedingType = _selectedFeedingType.value ?: return false
         
-        val durationMinutes = _feedingElapsedSeconds.value / 60
-        
-        val text = when (feedingType) {
-            FeedingType.BREAST_LEFT -> "Dojenje (lijeva dojka), trajalo ${durationMinutes} minuta."
-            FeedingType.BREAST_RIGHT -> "Dojenje (desna dojka), trajalo ${durationMinutes} minuta."
-            FeedingType.BOTTLE -> {
-                val amount = _bottleAmount.value.toIntOrNull() ?: 0
-                "Bočica ${amount}ml, trajalo ${durationMinutes} minuta."
+        return try {
+            val durationMinutes = _feedingElapsedSeconds.value / 60
+            
+            val text = when (feedingType) {
+                FeedingType.BREAST_LEFT -> "Dojenje (lijeva dojka), trajalo ${durationMinutes} minuta."
+                FeedingType.BREAST_RIGHT -> "Dojenje (desna dojka), trajalo ${durationMinutes} minuta."
+                FeedingType.BOTTLE -> {
+                    val amount = _bottleAmount.value.toIntOrNull() ?: 0
+                    "Bočica ${amount}ml, trajalo ${durationMinutes} minuta."
+                }
             }
+            
+            val classification = classifier.classifyEntry(text)
+            val entry = LogEntry(
+                childId = childId,
+                timestamp = startTime,
+                rawText = text,
+                category = Category.FEEDING,
+                tags = classification.tags,
+                mood = null,
+                feedingType = feedingType,
+                feedingAmount = if (feedingType == FeedingType.BOTTLE) _bottleAmount.value.toIntOrNull() else null
+            )
+            
+            repository.addEntry(entry)
+            
+            // Reset feeding state
+            stopFeeding()
+            _selectedFeedingType.value = null
+            _bottleAmount.value = ""
+            _feedingStartTime.value = null
+            _feedingElapsedSeconds.value = 0L
+            
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("AddEntryViewModel", "Error saving feeding entry: ${e.message}")
+            false // Return false on error
         }
-        
-        val classification = classifier.classifyEntry(text)
-        val entry = LogEntry(
-            childId = childId,
-            timestamp = startTime,
-            rawText = text,
-            category = Category.FEEDING,
-            tags = classification.tags,
-            mood = null,
-            feedingType = feedingType,
-            feedingAmount = if (feedingType == FeedingType.BOTTLE) _bottleAmount.value.toIntOrNull() else null
-        )
-        
-        repository.addEntry(entry)
-        
-        // Reset feeding state
-        stopFeeding()
-        _selectedFeedingType.value = null
-        _bottleAmount.value = ""
-        _feedingStartTime.value = null
-        _feedingElapsedSeconds.value = 0L
-        
-        return true
     }
     
     suspend fun saveEntry(): Boolean {
@@ -147,27 +152,32 @@ class AddEntryViewModel(
             return false
         }
         
-        val classification = classifier.classifyEntry(text)
-        val entry = LogEntry(
-            childId = _selectedChildId.value,
-            rawText = text,
-            category = classification.category,
-            tags = classification.tags,
-            mood = classification.mood,
-            temperature = classification.temperature,
-            medicineGiven = classification.medicineGiven,
-            medicineTimestamp = classification.medicineGiven?.let { System.currentTimeMillis() },
-            feedingType = classification.feedingType,
-            feedingAmount = classification.feedingAmount
-        )
-        
-        repository.addEntry(entry)
-        
-        // Reset form
-        _entryText.value = ""
-        _selectedChildId.value = null
-        
-        return true
+        return try {
+            val classification = classifier.classifyEntry(text)
+            val entry = LogEntry(
+                childId = _selectedChildId.value,
+                rawText = text,
+                category = classification.category,
+                tags = classification.tags,
+                mood = classification.mood,
+                temperature = classification.temperature,
+                medicineGiven = classification.medicineGiven,
+                medicineTimestamp = classification.medicineGiven?.let { System.currentTimeMillis() },
+                feedingType = classification.feedingType,
+                feedingAmount = classification.feedingAmount
+            )
+            
+            repository.addEntry(entry)
+            
+            // Reset form
+            _entryText.value = ""
+            _selectedChildId.value = null
+            
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("AddEntryViewModel", "Error saving entry: ${e.message}")
+            false // Return false on error - UI should show error message
+        }
     }
 }
 

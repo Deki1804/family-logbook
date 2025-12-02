@@ -166,6 +166,13 @@ fun LoginScreen(
                         successMessage = null
                         
                         try {
+                            // Validate email format
+                            if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+                                errorMessage = "Please enter a valid email address"
+                                isLoading = false
+                                return@launch
+                            }
+                            
                             if (isSignUp) {
                                 // Validate passwords match
                                 if (password != confirmPassword) {
@@ -199,7 +206,7 @@ fun LoginScreen(
                             kotlinx.coroutines.delay(1000)
                             onUpgradeSuccess()
                         } catch (e: Exception) {
-                            errorMessage = e.message ?: "An error occurred"
+                            errorMessage = getFriendlyErrorMessage(e)
                         } finally {
                             isLoading = false
                         }
@@ -249,11 +256,15 @@ fun LoginScreen(
                             errorMessage = "Please enter your email first"
                             return@launch
                         }
+                        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+                            errorMessage = "Please enter a valid email address"
+                            return@launch
+                        }
                         try {
                             authManager.sendPasswordResetEmail(email)
-                            successMessage = "Password reset email sent!"
+                            successMessage = "Password reset email sent! Check your inbox."
                         } catch (e: Exception) {
-                            errorMessage = e.message ?: "Failed to send reset email"
+                            errorMessage = getFriendlyErrorMessage(e)
                         }
                     }
                 }) {
@@ -261,6 +272,31 @@ fun LoginScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * Converts Firebase Auth exceptions to user-friendly error messages.
+ */
+private fun getFriendlyErrorMessage(exception: Exception): String {
+    val message = exception.message ?: ""
+    return when {
+        message.contains("email address is badly formatted", ignoreCase = true) -> 
+            "Please enter a valid email address"
+        message.contains("password is too weak", ignoreCase = true) -> 
+            "Password is too weak. Please use a stronger password."
+        message.contains("email address is already in use", ignoreCase = true) -> 
+            "This email is already registered. Try signing in instead."
+        message.contains("there is no user record", ignoreCase = true) -> 
+            "No account found with this email. Check your email or sign up."
+        message.contains("password is invalid", ignoreCase = true) || 
+        message.contains("wrong password", ignoreCase = true) -> 
+            "Incorrect password. Please try again."
+        message.contains("network", ignoreCase = true) -> 
+            "Network error. Please check your internet connection."
+        message.contains("too many requests", ignoreCase = true) -> 
+            "Too many attempts. Please wait a moment and try again."
+        else -> exception.message ?: "An error occurred. Please try again."
     }
 }
 

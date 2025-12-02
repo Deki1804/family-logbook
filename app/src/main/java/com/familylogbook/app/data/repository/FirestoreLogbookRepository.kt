@@ -44,15 +44,24 @@ class FirestoreLogbookRepository(
             .orderBy("timestamp", Query.Direction.DESCENDING)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    close(error)
+                    // Log error but don't crash - return empty list
+                    android.util.Log.e("FirestoreLogbookRepository", "Error loading entries: ${error.message}")
+                    trySend(emptyList())
                     return@addSnapshotListener
                 }
                 
                 if (snapshot != null) {
                     val entries = snapshot.documents.mapNotNull { doc ->
-                        doc.toLogEntry()
+                        try {
+                            doc.toLogEntry()
+                        } catch (e: Exception) {
+                            android.util.Log.e("FirestoreLogbookRepository", "Error parsing entry ${doc.id}: ${e.message}")
+                            null
+                        }
                     }
                     trySend(entries)
+                } else {
+                    trySend(emptyList())
                 }
             }
         
@@ -60,10 +69,15 @@ class FirestoreLogbookRepository(
     }
     
     override suspend fun addEntry(entry: LogEntry) {
-        entriesCollection
-            .document(entry.id)
-            .set(entry.toFirestoreMap())
-            .await()
+        try {
+            entriesCollection
+                .document(entry.id)
+                .set(entry.toFirestoreMap())
+                .await()
+        } catch (e: Exception) {
+            android.util.Log.e("FirestoreLogbookRepository", "Error adding entry: ${e.message}")
+            throw e // Re-throw so ViewModel can handle it
+        }
     }
     
     override suspend fun deleteEntry(entryId: String) {
@@ -79,15 +93,24 @@ class FirestoreLogbookRepository(
         val listener = childrenCollection
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    close(error)
+                    // Log error but don't crash - return empty list
+                    android.util.Log.e("FirestoreLogbookRepository", "Error loading children: ${error.message}")
+                    trySend(emptyList())
                     return@addSnapshotListener
                 }
                 
                 if (snapshot != null) {
                     val children = snapshot.documents.mapNotNull { doc ->
-                        doc.toChild()
+                        try {
+                            doc.toChild()
+                        } catch (e: Exception) {
+                            android.util.Log.e("FirestoreLogbookRepository", "Error parsing child ${doc.id}: ${e.message}")
+                            null
+                        }
                     }
                     trySend(children)
+                } else {
+                    trySend(emptyList())
                 }
             }
         

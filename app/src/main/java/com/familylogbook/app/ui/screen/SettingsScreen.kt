@@ -166,6 +166,7 @@ fun SettingsScreen(
                         onDelete = {
                             scope.launch {
                                 viewModel.deleteChild(child.id)
+                                // If delete fails, error is logged - in production show snackbar
                             }
                         }
                     )
