@@ -9,17 +9,25 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.familylogbook.app.data.smarthome.SmartHomeManager
 import com.familylogbook.app.domain.model.Category
 import com.familylogbook.app.domain.model.Child
 import com.familylogbook.app.domain.model.LogEntry
@@ -84,6 +92,9 @@ fun HomeScreen(
                         viewModel = viewModel,
                         onChildClick = { childId ->
                             onNavigateToChildProfile(childId)
+                        },
+                        onDelete = { entryId ->
+                            // Delete will be handled in the card with confirmation
                         }
                     )
                 }
@@ -107,14 +118,46 @@ fun LogEntryCard(
     entry: LogEntry,
     child: Child?,
     viewModel: HomeViewModel,
-    onChildClick: (String) -> Unit = {}
+    onChildClick: (String) -> Unit = {},
+    onDelete: (String) -> Unit = {}
 ) {
+    val context = LocalContext.current
+    val smartHomeManager = remember { SmartHomeManager(context) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var showContextMenu by remember { mutableStateOf(false) }
+    
+    // Delete confirmation dialog
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Obriši zapis") },
+            text = { Text("Želiš li sigurno obrisati ovaj zapis?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteEntry(entry.id)
+                        showDeleteDialog = false
+                    }
+                ) {
+                    Text("Obriši", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("Odustani")
+                }
+            }
+        )
+    }
+    
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Card(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { /* Regular tap - could navigate to detail */ },
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
             shape = RoundedCornerShape(12.dp)
         ) {
@@ -124,7 +167,7 @@ fun LogEntryCard(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Header: Child + Date
+            // Header: Child + Date + Menu
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -168,11 +211,60 @@ fun LogEntryCard(
                     }
                 }
                 
-                Text(
-                    text = formatTimestamp(entry.timestamp),
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = formatTimestamp(entry.timestamp),
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                    
+                    // Context menu button
+                    Box {
+                        IconButton(
+                            onClick = { showContextMenu = true },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = "More options",
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        
+                        DropdownMenu(
+                            expanded = showContextMenu,
+                            onDismissRequest = { showContextMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Uredi") },
+                                onClick = {
+                                    showContextMenu = false
+                                    // TODO: Navigate to edit screen
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Edit, contentDescription = null)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Obriši", color = MaterialTheme.colorScheme.error) },
+                                onClick = {
+                                    showContextMenu = false
+                                    showDeleteDialog = true
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
             }
             
             // Category badge
@@ -245,6 +337,22 @@ fun LogEntryCard(
                     modifier = Modifier.padding(top = 4.dp)
                 )
             }
+            
+            // Smart Home action button
+            if (entry.category == Category.SMART_HOME) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        smartHomeManager.triggerGoogleAssistant(entry.rawText)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.tertiary
+                    )
+                ) {
+                    Text("Run with Google Assistant")
+                }
+            }
         }
         }
         
@@ -272,6 +380,7 @@ fun CategoryChip(category: Category) {
         Category.FINANCE -> "Finance" to Color(0xFF95E1D3)
         Category.WORK -> "Work" to Color(0xFFAA96DA)
         Category.SHOPPING -> "Shopping" to Color(0xFFFFB84D)
+        Category.SMART_HOME -> "Smart Home" to Color(0xFF00BCD4)
         Category.OTHER -> "Other" to Color(0xFFCCCCCC)
     }
     

@@ -81,13 +81,6 @@ class HomeViewModel(
         }
     }
     
-    init {
-        loadEntries()
-        loadChildren()
-        loadPersons()
-        loadEntities()
-    }
-    
     private fun loadEntries() {
         viewModelScope.launch {
             repository.getAllEntries().collect { entriesList ->
@@ -163,6 +156,12 @@ class HomeViewModel(
     
     fun getChildById(childId: String): Child? {
         return _children.value.find { it.id == childId }
+    }
+    
+    fun deleteEntry(entryId: String) {
+        viewModelScope.launch {
+            repository.deleteEntry(entryId)
+        }
     }
 }
 

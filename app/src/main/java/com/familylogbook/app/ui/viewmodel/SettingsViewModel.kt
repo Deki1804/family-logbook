@@ -190,11 +190,26 @@ class SettingsViewModel(
     
     suspend fun deletePerson(personId: String): Boolean {
         return try {
+            // Delete all entries associated with this person
+            val entriesToDelete = _entries.value.filter { 
+                it.personId == personId || it.childId == personId 
+            }
+            entriesToDelete.forEach { entry ->
+                repository.deleteEntry(entry.id)
+            }
+            
+            // Delete the person
             repository.deletePerson(personId)
             true
         } catch (e: Exception) {
             android.util.Log.e("SettingsViewModel", "Error deleting person: ${e.message}")
             false
+        }
+    }
+    
+    suspend fun getPersonEntryCount(personId: String): Int {
+        return _entries.value.count { 
+            it.personId == personId || it.childId == personId 
         }
     }
     
@@ -244,10 +259,64 @@ class SettingsViewModel(
     
     suspend fun deleteEntity(entityId: String): Boolean {
         return try {
+            // Delete all entries associated with this entity
+            val entriesToDelete = _entries.value.filter { 
+                it.entityId == entityId 
+            }
+            entriesToDelete.forEach { entry ->
+                repository.deleteEntry(entry.id)
+            }
+            
+            // Delete the entity
             repository.deleteEntity(entityId)
             true
         } catch (e: Exception) {
             android.util.Log.e("SettingsViewModel", "Error deleting entity: ${e.message}")
+            false
+        }
+    }
+    
+    suspend fun getEntityEntryCount(entityId: String): Int {
+        return _entries.value.count { it.entityId == entityId }
+    }
+    
+    /**
+     * Resets all data for the current user.
+     * Deletes all persons, entities, and entries.
+     * Optionally reseeds sample data.
+     */
+    suspend fun resetAllData(reseedSample: Boolean = false): Boolean {
+        return try {
+            // Delete all entries
+            _entries.value.forEach { entry ->
+                repository.deleteEntry(entry.id)
+            }
+            
+            // Delete all persons
+            _persons.value.forEach { person ->
+                repository.deletePerson(person.id)
+            }
+            
+            // Delete all entities
+            _entities.value.forEach { entity ->
+                repository.deleteEntity(entity.id)
+            }
+            
+            // Delete all children (legacy)
+            _children.value.forEach { child ->
+                repository.deleteChild(child.id)
+            }
+            
+            // Optionally reseed sample data
+            if (reseedSample) {
+                // Note: This would require access to FirestoreSeedData or similar
+                // For now, we'll just clear everything
+                android.util.Log.d("SettingsViewModel", "Reset complete. Sample data reseeding not yet implemented.")
+            }
+            
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("SettingsViewModel", "Error resetting data: ${e.message}")
             false
         }
     }

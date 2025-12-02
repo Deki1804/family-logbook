@@ -223,6 +223,16 @@ fun SettingsScreen(
         
         item { Divider() }
         
+        // Advanced / Reset Section
+        item {
+            AdvancedSection(
+                viewModel = viewModel,
+                scope = scope
+            )
+        }
+        
+        item { Divider() }
+        
         // About Section
         item {
             AboutSection()
@@ -431,14 +441,51 @@ fun FamilySection(
             )
         } else {
             persons.forEach { person ->
+                var showDeleteDialog by remember { mutableStateOf(false) }
+                val entryCount = remember { 
+                    kotlinx.coroutines.runBlocking { 
+                        viewModel.getPersonEntryCount(person.id) 
+                    } 
+                }
+                
                 PersonListItem(
                     person = person,
-                    onDelete = {
-                        scope.launch {
-                            viewModel.deletePerson(person.id)
-                        }
-                    }
+                    entryCount = entryCount,
+                    onDelete = { showDeleteDialog = true }
                 )
+                
+                if (showDeleteDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showDeleteDialog = false },
+                        title = { Text("Obriši osobu") },
+                        text = { 
+                            Text(
+                                if (entryCount > 0) {
+                                    "Ovo će obrisati osobu i svih $entryCount zapisa povezanih s njom. Ovu akciju nije moguće poništiti."
+                                } else {
+                                    "Želiš li sigurno obrisati ovu osobu?"
+                                }
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    scope.launch {
+                                        viewModel.deletePerson(person.id)
+                                        showDeleteDialog = false
+                                    }
+                                }
+                            ) {
+                                Text("Obriši sve", color = MaterialTheme.colorScheme.error)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showDeleteDialog = false }) {
+                                Text("Odustani")
+                            }
+                        }
+                    )
+                }
             }
         }
         
@@ -562,14 +609,51 @@ fun FamilySection(
             )
         } else {
             entities.forEach { entity ->
+                var showDeleteDialog by remember { mutableStateOf(false) }
+                val entryCount = remember { 
+                    kotlinx.coroutines.runBlocking { 
+                        viewModel.getEntityEntryCount(entity.id) 
+                    } 
+                }
+                
                 EntityListItem(
                     entity = entity,
-                    onDelete = {
-                        scope.launch {
-                            viewModel.deleteEntity(entity.id)
-                        }
-                    }
+                    entryCount = entryCount,
+                    onDelete = { showDeleteDialog = true }
                 )
+                
+                if (showDeleteDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showDeleteDialog = false },
+                        title = { Text("Obriši entitet") },
+                        text = { 
+                            Text(
+                                if (entryCount > 0) {
+                                    "Ovo će obrisati entitet i svih $entryCount zapisa povezanih s njim. Ovu akciju nije moguće poništiti."
+                                } else {
+                                    "Želiš li sigurno obrisati ovaj entitet?"
+                                }
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    scope.launch {
+                                        viewModel.deleteEntity(entity.id)
+                                        showDeleteDialog = false
+                                    }
+                                }
+                            ) {
+                                Text("Obriši sve", color = MaterialTheme.colorScheme.error)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showDeleteDialog = false }) {
+                                Text("Odustani")
+                            }
+                        }
+                    )
+                }
             }
         }
     }
@@ -578,6 +662,7 @@ fun FamilySection(
 @Composable
 fun PersonListItem(
     person: Person,
+    entryCount: Int = 0,
     onDelete: () -> Unit
 ) {
     Card(
@@ -636,6 +721,7 @@ fun PersonListItem(
 @Composable
 fun EntityListItem(
     entity: Entity,
+    entryCount: Int = 0,
     onDelete: () -> Unit
 ) {
     Card(
@@ -816,6 +902,132 @@ fun AppSettingsSection() {
                 )
             }
         }
+    }
+}
+
+@Composable
+fun AdvancedSection(
+    viewModel: SettingsViewModel,
+    scope: CoroutineScope
+) {
+    var showResetDialog by remember { mutableStateOf(false) }
+    var showResetWithSampleDialog by remember { mutableStateOf(false) }
+    
+    Column(
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = "Napredno",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "Reset podataka",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.error
+                )
+                Text(
+                    text = "Ovo će obrisati sve tvoje podatke (osobe, entitete, zapise). Ovu akciju nije moguće poništiti.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = { showResetDialog = true },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Text("Obriši sve")
+                    }
+                    
+                    Button(
+                        onClick = { showResetWithSampleDialog = true },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer
+                        )
+                    ) {
+                        Text("Reset + Sample")
+                    }
+                }
+            }
+        }
+    }
+    
+    // Reset dialog (empty)
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetDialog = false },
+            title = { Text("Obriši sve podatke") },
+            text = { 
+                Text("Ovo će obrisati sve tvoje podatke (osobe, entitete, zapise). Ovu akciju nije moguće poništiti. Želiš li nastaviti?")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            viewModel.resetAllData(reseedSample = false)
+                            showResetDialog = false
+                        }
+                    }
+                ) {
+                    Text("Obriši sve", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetDialog = false }) {
+                    Text("Odustani")
+                }
+            }
+        )
+    }
+    
+    // Reset with sample dialog
+    if (showResetWithSampleDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetWithSampleDialog = false },
+            title = { Text("Reset i učitaj sample podatke") },
+            text = { 
+                Text("Ovo će obrisati sve tvoje podatke i učitati demo podatke (Neo, auto, itd.). Ovu akciju nije moguće poništiti. Želiš li nastaviti?")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            viewModel.resetAllData(reseedSample = true)
+                            showResetWithSampleDialog = false
+                        }
+                    }
+                ) {
+                    Text("Reset + Sample", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetWithSampleDialog = false }) {
+                    Text("Odustani")
+                }
+            }
+        )
     }
 }
 

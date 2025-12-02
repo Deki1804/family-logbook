@@ -15,6 +15,7 @@ enum class Category {
     SCHOOL,
     WORK,
     SHOPPING,
+    SMART_HOME, // Smart home commands (lights, vacuum, music, etc.)
     
     // Legacy (keeping for backward compatibility)
     KINDERGARTEN_SCHOOL,

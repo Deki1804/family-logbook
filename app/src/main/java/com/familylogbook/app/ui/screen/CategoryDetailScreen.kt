@@ -45,6 +45,7 @@ fun CategoryDetailScreen(
         Category.SCHOOL -> "School"
         Category.KINDERGARTEN_SCHOOL -> "School"
         Category.HOME -> "Home"
+        Category.SMART_HOME -> "Smart Home"
         Category.OTHER -> "Other"
     }
     

@@ -109,6 +109,19 @@ class EntryClassifier {
             "presentation", "prezentacija", "report", "izvještaj", "task", "zadatak"
         )
         
+        // Smart Home keywords
+        val smartHomeKeywords = listOf(
+            "svjetlo", "svjetla", "light", "lights", "upali", "ugasi", "turn on", "turn off",
+            "rumbu", "usisavač", "vacuum", "robot", "robot usisavač", "robot vacuum",
+            "klima", "air conditioning", "AC", "grijanje", "heating", "hladenje", "cooling",
+            "TV", "television", "televizor", "upali tv", "ugasi tv",
+            "rolete", "blinds", "zavjese", "curtains", "zatvori", "otvori",
+            "muziku", "music", "speaker", "zvučnik", "pusti", "play", "stop",
+            "termostat", "thermostat", "temperatura", "temperature", "postavi", "set",
+            "pametna kuća", "smart home", "google home", "alexa", "assistant",
+            "grijanje u autu", "car heating", "upali grijanje", "turn on heating"
+        )
+        
         // Shopping keywords
         val shoppingKeywords = listOf(
             "shopping", "kupovina", "buy", "kupio", "purchase", "nabava", "grocery", "namirnice",
@@ -124,6 +137,7 @@ class EntryClassifier {
         
         when {
             // Priority order matters - more specific first
+            smartHomeKeywords.any { text.contains(it) } -> return Category.SMART_HOME
             autoKeywords.any { text.contains(it) } -> return Category.AUTO
             financeKeywords.any { text.contains(it) } -> return Category.FINANCE
             houseKeywords.any { text.contains(it) } -> return Category.HOUSE

@@ -280,6 +280,7 @@ fun CategoryStatRow(
         Category.FINANCE -> "Finance" to Color(0xFF95E1D3)
         Category.WORK -> "Work" to Color(0xFFAA96DA)
         Category.SHOPPING -> "Shopping" to Color(0xFFFFB84D)
+        Category.SMART_HOME -> "Smart Home" to Color(0xFF00BCD4)
         Category.OTHER -> "Other" to Color(0xFFCCCCCC)
     }
     

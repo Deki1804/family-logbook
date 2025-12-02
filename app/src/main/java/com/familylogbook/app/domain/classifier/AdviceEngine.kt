@@ -36,6 +36,7 @@ class AdviceEngine {
             Category.FINANCE -> findFinanceAdvice(lowerText)
             Category.WORK -> findWorkAdvice(lowerText)
             Category.SHOPPING -> findShoppingAdvice(lowerText)
+            Category.SMART_HOME -> findSmartHomeAdvice(lowerText)
             else -> null
         }
     }
@@ -100,6 +101,10 @@ class AdviceEngine {
     
     private fun findShoppingAdvice(text: String): AdviceTemplate? {
         return adviceTemplates.find { it.id == "shopping_list" }
+    }
+    
+    private fun findSmartHomeAdvice(text: String): AdviceTemplate? {
+        return adviceTemplates.find { it.id == "smart_home" }
     }
     
     private fun createAdviceTemplates(): List<AdviceTemplate> {
@@ -336,6 +341,25 @@ class AdviceEngine {
                 ),
                 whenToCallDoctor = null,
                 relatedKeywords = listOf("kupovina", "shopping", "kupio", "buy", "lista", "list", "namirnice", "grocery")
+            ),
+            
+            // Smart Home
+            AdviceTemplate(
+                id = "smart_home",
+                title = "Pametna kuća - Komande",
+                shortDescription = "Možete koristiti Google Home ili Alexa za upravljanje uređajima.",
+                tips = listOf(
+                    "Koristite Google Assistant ili Alexa za upravljanje svjetlima, klimom, TV-om i drugim uređajima",
+                    "Imenujte sobe i uređaje jasno u aplikaciji za pametnu kuću",
+                    "Možete postaviti scene i rutine za automatsko upravljanje",
+                    "Provjerite da su vaši uređaji povezani s Google Home ili Alexa",
+                    "Koristite glasovne komande za brže upravljanje"
+                ),
+                whenToCallDoctor = null,
+                relatedKeywords = listOf(
+                    "svjetlo", "light", "rumbu", "vacuum", "klima", "AC", "TV", "rolete", "blinds",
+                    "muziku", "music", "google home", "alexa", "assistant", "pametna kuća", "smart home"
+                )
             )
         )
     }
