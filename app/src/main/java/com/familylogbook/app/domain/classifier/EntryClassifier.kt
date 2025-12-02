@@ -78,7 +78,44 @@ class EntryClassifier {
             "prijatelj", "maskenbal", "predstava"
         )
         
-        // Home keywords
+        // Auto keywords
+        val autoKeywords = listOf(
+            "auto", "car", "vehicle", "tire", "tyre", "guma", "servis", "service",
+            "oil", "ulje", "brake", "kočnica", "engine", "motor", "battery", "baterija",
+            "flat tire", "punctured", "probušena", "procurila", "registracija", "registration",
+            "osiguranje", "insurance", "mileage", "kilometraža", "fuel", "gorivo"
+        )
+        
+        // House keywords
+        val houseKeywords = listOf(
+            "house", "home", "kuća", "stan", "apartment", "filter", "broke", "broken",
+            "fixed", "repair", "maintenance", "cleaned", "cleaning", "appliance", "uređaj",
+            "pokvario", "popravio", "plumbing", "vodoinstalater", "electric", "električar",
+            "heating", "grijanje", "cooling", "hladenje", "roof", "krov", "window", "prozor"
+        )
+        
+        // Finance keywords
+        val financeKeywords = listOf(
+            "bill", "račun", "invoice", "račun", "payment", "plaćanje", "cost", "trošak",
+            "expense", "trošak", "money", "novac", "eur", "euro", "€", "kn", "kuna",
+            "electricity", "struja", "water", "voda", "gas", "plin", "internet", "phone", "telefon",
+            "rent", "najam", "mortgage", "hipoteka", "loan", "kredit", "debt", "dug"
+        )
+        
+        // Work keywords
+        val workKeywords = listOf(
+            "work", "posao", "job", "meeting", "sastanak", "deadline", "rok", "project", "projekt",
+            "client", "klijent", "colleague", "kolega", "boss", "šef", "office", "ured",
+            "presentation", "prezentacija", "report", "izvještaj", "task", "zadatak"
+        )
+        
+        // Shopping keywords
+        val shoppingKeywords = listOf(
+            "shopping", "kupovina", "buy", "kupio", "purchase", "nabava", "grocery", "namirnice",
+            "store", "trgovina", "shop", "dućan", "list", "lista", "need to buy", "treba kupiti"
+        )
+        
+        // Home keywords (legacy, keeping for backward compatibility)
         val homeKeywords = listOf(
             "filter", "broke", "broken", "fixed", "repair", "maintenance",
             "cleaned", "cleaning", "house", "home", "filter", "appliance",
@@ -86,13 +123,18 @@ class EntryClassifier {
         )
         
         when {
+            // Priority order matters - more specific first
+            autoKeywords.any { text.contains(it) } -> return Category.AUTO
+            financeKeywords.any { text.contains(it) } -> return Category.FINANCE
+            houseKeywords.any { text.contains(it) } -> return Category.HOUSE
+            workKeywords.any { text.contains(it) } -> return Category.WORK
+            shoppingKeywords.any { text.contains(it) } -> return Category.SHOPPING
             feedingKeywords.any { text.contains(it) } -> return Category.FEEDING
             healthKeywords.any { text.contains(it) } -> return Category.HEALTH
             sleepKeywords.any { text.contains(it) } -> return Category.SLEEP
             moodKeywords.any { text.contains(it) } -> return Category.MOOD
             developmentKeywords.any { text.contains(it) } -> return Category.DEVELOPMENT
-            schoolKeywords.any { text.contains(it) } -> return Category.KINDERGARTEN_SCHOOL
-            homeKeywords.any { text.contains(it) } -> return Category.HOME
+            schoolKeywords.any { text.contains(it) } -> return Category.SCHOOL
             else -> return Category.OTHER
         }
     }
@@ -134,6 +176,7 @@ class EntryClassifier {
         
         // Extract common tags based on keywords
         val tagMap = mapOf(
+            // Health tags
             "fever" to "fever",
             "temperature" to "fever",
             "tooth" to "tooth",
@@ -143,23 +186,56 @@ class EntryClassifier {
             "medication" to "medicine",
             "syrup" to "medicine",
             "doctor" to "doctor",
+            // Sleep tags
             "sleep" to "sleep",
             "wake" to "wake",
             "spava" to "sleep",
+            // Mood tags
             "happy" to "happy",
             "sad" to "sad",
             "mood" to "mood",
+            // Development tags
             "first" to "milestone",
             "milestone" to "milestone",
             "learned" to "learning",
             "word" to "language",
             "riječ" to "language",
+            // School tags
             "kindergarten" to "kindergarten",
             "school" to "school",
             "vrtić" to "kindergarten",
+            // Auto tags
+            "guma" to "tire",
+            "tire" to "tire",
+            "servis" to "service",
+            "service" to "service",
+            "probušena" to "flat-tire",
+            "flat tire" to "flat-tire",
+            "registracija" to "registration",
+            "osiguranje" to "insurance",
+            // House tags
             "filter" to "maintenance",
             "broke" to "repair",
-            "broken" to "repair"
+            "broken" to "repair",
+            "popravio" to "repair",
+            "repair" to "repair",
+            // Finance tags
+            "račun" to "bill",
+            "bill" to "bill",
+            "plaćanje" to "payment",
+            "payment" to "payment",
+            "struja" to "electricity",
+            "voda" to "water",
+            // Work tags
+            "sastanak" to "meeting",
+            "meeting" to "meeting",
+            "deadline" to "deadline",
+            "rok" to "deadline",
+            // Shopping tags
+            "kupovina" to "shopping",
+            "shopping" to "shopping",
+            "lista" to "shopping-list",
+            "grocery" to "grocery"
         )
         
         tagMap.forEach { (keyword, tag) ->

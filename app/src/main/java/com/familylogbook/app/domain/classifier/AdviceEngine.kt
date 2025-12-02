@@ -31,6 +31,11 @@ class AdviceEngine {
             Category.FEEDING -> findFeedingAdvice(lowerText)
             Category.SLEEP -> findSleepAdvice(lowerText)
             Category.MOOD -> findMoodAdvice(lowerText)
+            Category.AUTO -> findAutoAdvice(lowerText)
+            Category.HOUSE -> findHouseAdvice(lowerText)
+            Category.FINANCE -> findFinanceAdvice(lowerText)
+            Category.WORK -> findWorkAdvice(lowerText)
+            Category.SHOPPING -> findShoppingAdvice(lowerText)
             else -> null
         }
     }
@@ -65,6 +70,36 @@ class AdviceEngine {
                 return adviceTemplates.find { it.id == "soothing" }
         }
         return null
+    }
+    
+    private fun findAutoAdvice(text: String): AdviceTemplate? {
+        when {
+            text.contains("guma") || text.contains("tire") || text.contains("probušena") || text.contains("procurila") || text.contains("flat") -> 
+                return adviceTemplates.find { it.id == "flat_tire" }
+            text.contains("servis") || text.contains("service") -> 
+                return adviceTemplates.find { it.id == "car_service" }
+        }
+        return adviceTemplates.find { it.id == "auto_general" }
+    }
+    
+    private fun findHouseAdvice(text: String): AdviceTemplate? {
+        when {
+            text.contains("pokvario") || text.contains("broken") || text.contains("broke") -> 
+                return adviceTemplates.find { it.id == "house_repair" }
+        }
+        return adviceTemplates.find { it.id == "house_general" }
+    }
+    
+    private fun findFinanceAdvice(text: String): AdviceTemplate? {
+        return adviceTemplates.find { it.id == "finance_bill" }
+    }
+    
+    private fun findWorkAdvice(text: String): AdviceTemplate? {
+        return adviceTemplates.find { it.id == "work_reminder" }
+    }
+    
+    private fun findShoppingAdvice(text: String): AdviceTemplate? {
+        return adviceTemplates.find { it.id == "shopping_list" }
     }
     
     private fun createAdviceTemplates(): List<AdviceTemplate> {
@@ -170,6 +205,137 @@ class AdviceEngine {
                 ),
                 whenToCallDoctor = null,
                 relatedKeywords = listOf("uzrujan", "nervozan", "stressed", "ne može", "umiri")
+            ),
+            
+            // Auto - Flat Tire
+            AdviceTemplate(
+                id = "flat_tire",
+                title = "Probušena guma - Što napraviti",
+                shortDescription = "Ako imate probušenu gumu, evo koraka koje trebate poduzeti.",
+                tips = listOf(
+                    "Provjerite ima li rezervnu gumu u prtljažniku",
+                    "Ako nema rezervne, nazovite osiguranje ili vučnu službu",
+                    "Ne vozite dalje ako je guma potpuno prazna - može oštetiti felgu",
+                    "Ako imate rezervnu, zamijenite je (ako znate kako)",
+                    "Provjerite tlak u ostalim gumama nakon zamjene",
+                    "Odmah idite na servis da popravite probušenu gumu"
+                ),
+                whenToCallDoctor = null,
+                relatedKeywords = listOf("guma", "tire", "probušena", "procurila", "flat", "punctured")
+            ),
+            
+            // Auto - Service
+            AdviceTemplate(
+                id = "car_service",
+                title = "Servis auta - Podsjetnik",
+                shortDescription = "Redovno održavanje auta je važno za sigurnost i pouzdanost.",
+                tips = listOf(
+                    "Zabilježite datum i kilometražu servisa",
+                    "Provjerite što je uključeno u servis (ulje, filteri, kočnice, itd.)",
+                    "Spremite račun za buduće reference",
+                    "Postavite podsjetnik za sljedeći servis (obično nakon 10-15k km)",
+                    "Provjerite garanciju ako je auto novi"
+                ),
+                whenToCallDoctor = null,
+                relatedKeywords = listOf("servis", "service", "održavanje", "maintenance")
+            ),
+            
+            // Auto - General
+            AdviceTemplate(
+                id = "auto_general",
+                title = "Auto - Opći savjeti",
+                shortDescription = "Koristan savjet za održavanje vašeg vozila.",
+                tips = listOf(
+                    "Redovno provjeravajte tlak u gumama",
+                    "Pratite kilometražu za redovne servise",
+                    "Spremite važne dokumente (osiguranje, registracija)",
+                    "Provjerite datum registracije i osiguranja",
+                    "Imajte rezervnu gumu i alat u prtljažniku"
+                ),
+                whenToCallDoctor = null,
+                relatedKeywords = listOf("auto", "car", "vozilo", "vehicle")
+            ),
+            
+            // House - Repair
+            AdviceTemplate(
+                id = "house_repair",
+                title = "Kućni popravak - Što napraviti",
+                shortDescription = "Ako se nešto pokvarilo u kući, evo koraka koje možete poduzeti.",
+                tips = listOf(
+                    "Provjerite je li problem hitan (curenje vode, struja, plin) - ako jeste, nazovite hitnu",
+                    "Ako nije hitno, zabilježite što je pokvareno i kada",
+                    "Provjerite garanciju ako je uređaj novi",
+                    "Kontaktirajte majstora ili servis ako ne znate popraviti sami",
+                    "Spremite račune za popravke za buduće reference",
+                    "Ako je problem jednostavan, možete probati sami (pažljivo!)"
+                ),
+                whenToCallDoctor = null,
+                relatedKeywords = listOf("pokvario", "broken", "broke", "popravak", "repair", "kvar")
+            ),
+            
+            // House - General
+            AdviceTemplate(
+                id = "house_general",
+                title = "Kuća - Opći savjeti",
+                shortDescription = "Koristan savjet za održavanje doma.",
+                tips = listOf(
+                    "Redovno mijenjajte filtere (zrak, voda)",
+                    "Provjerite baterije u detektorima dima",
+                    "Pratite redovne servise (grijanje, hladenje)",
+                    "Zabilježite važne popravke i troškove",
+                    "Imajte kontakt brojeve za hitne slučajeve (vodoinstalater, električar)"
+                ),
+                whenToCallDoctor = null,
+                relatedKeywords = listOf("kuća", "house", "home", "stan", "apartment")
+            ),
+            
+            // Finance - Bill
+            AdviceTemplate(
+                id = "finance_bill",
+                title = "Račun - Podsjetnik",
+                shortDescription = "Kako pravilno pratiti i plaćati račune.",
+                tips = listOf(
+                    "Zabilježite datum dospijeća računa",
+                    "Postavite podsjetnik 2-3 dana prije dospijeća",
+                    "Provjerite iznos i usporedite s prethodnim računima",
+                    "Ako je račun neuobičajeno visok, provjerite zašto",
+                    "Spremite račune za porezne svrhe",
+                    "Koristite automatsko plaćanje ako je moguće"
+                ),
+                whenToCallDoctor = null,
+                relatedKeywords = listOf("račun", "bill", "invoice", "plaćanje", "payment", "struja", "voda", "internet")
+            ),
+            
+            // Work - Reminder
+            AdviceTemplate(
+                id = "work_reminder",
+                title = "Posao - Podsjetnik",
+                shortDescription = "Kako pravilno pratiti obaveze na poslu.",
+                tips = listOf(
+                    "Zabilježite važne rokove i sastanke",
+                    "Postavite podsjetnike za važne zadatke",
+                    "Spremite važne dokumente i prezentacije",
+                    "Pratite sastanke i dogovore",
+                    "Organizirajte se po prioritetima"
+                ),
+                whenToCallDoctor = null,
+                relatedKeywords = listOf("posao", "work", "job", "sastanak", "meeting", "deadline", "rok")
+            ),
+            
+            // Shopping - List
+            AdviceTemplate(
+                id = "shopping_list",
+                title = "Kupovina - Lista",
+                shortDescription = "Kako pravilno organizirati kupovinu.",
+                tips = listOf(
+                    "Napravite listu prije odlaska u trgovinu",
+                    "Grupirajte artikle po kategorijama (namirnice, kuća, osobno)",
+                    "Provjerite što već imate kod kuće",
+                    "Pratite troškove da ne prekoračite budžet",
+                    "Koristite aplikacije za popuste i kupone ako su dostupni"
+                ),
+                whenToCallDoctor = null,
+                relatedKeywords = listOf("kupovina", "shopping", "kupio", "buy", "lista", "list", "namirnice", "grocery")
             )
         )
     }
