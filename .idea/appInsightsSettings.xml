@@ -17,6 +17,23 @@
             </InsightsFilterSettings>
           </value>
         </entry>
+        <entry key="Firebase Crashlytics">
+          <value>
+            <InsightsFilterSettings>
+              <option name="connection">
+                <ConnectionSetting>
+                  <option name="appId" value="com.familylogbook.app" />
+                  <option name="mobileSdkAppId" value="1:1068067776552:android:c3cb943508efd78491ed1d" />
+                  <option name="projectId" value="family-logbook" />
+                  <option name="projectNumber" value="1068067776552" />
+                </ConnectionSetting>
+              </option>
+              <option name="signal" value="SIGNAL_UNSPECIFIED" />
+              <option name="timeIntervalDays" value="THIRTY_DAYS" />
+              <option name="visibilityType" value="ALL" />
+            </InsightsFilterSettings>
+          </value>
+        </entry>
       </map>
     </option>
   </component>
