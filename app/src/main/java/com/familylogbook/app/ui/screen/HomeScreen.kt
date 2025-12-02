@@ -90,10 +90,10 @@ fun LogEntryCard(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Card(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        shape = RoundedCornerShape(12.dp)
-    ) {
+            modifier = Modifier.fillMaxWidth(),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            shape = RoundedCornerShape(12.dp)
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
