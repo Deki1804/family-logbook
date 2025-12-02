@@ -67,21 +67,29 @@ class MainActivity : ComponentActivity() {
         
         // Initialize repository based on Auth
         repository = if (useFirestore) {
-            // Ensure user is signed in (anonymous if needed) before creating repository
-            val userId = runBlocking {
-                authManager.ensureSignedIn()
-            }
-            
-            // Seed Firestore with sample data if database is empty
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    FirestoreSeedData.seedIfEmpty(userId)
-                } catch (e: Exception) {
-                    // Ignore errors - database might already have data
+            try {
+                // Ensure user is signed in (anonymous if needed) before creating repository
+                val userId = runBlocking {
+                    authManager.ensureSignedIn()
                 }
+                
+                // Seed Firestore with sample data if database is empty
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        FirestoreSeedData.seedIfEmpty(userId)
+                    } catch (e: Exception) {
+                        // Ignore errors - database might already have data
+                        android.util.Log.e("MainActivity", "Error seeding Firestore: ${e.message}")
+                    }
+                }
+                
+                FirestoreLogbookRepository(userId = userId)
+            } catch (e: Exception) {
+                // Fallback to in-memory repository if Firebase fails
+                android.util.Log.e("MainActivity", "Firebase initialization failed: ${e.message}", e)
+                android.util.Log.w("MainActivity", "Falling back to in-memory repository")
+                InMemoryLogbookRepository()
             }
-            
-            FirestoreLogbookRepository(userId = userId)
         } else {
             InMemoryLogbookRepository()
         }
