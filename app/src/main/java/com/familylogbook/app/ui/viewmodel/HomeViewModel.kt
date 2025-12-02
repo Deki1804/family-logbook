@@ -2,6 +2,8 @@ package com.familylogbook.app.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.familylogbook.app.domain.classifier.AdviceEngine
+import com.familylogbook.app.domain.model.AdviceTemplate
 import com.familylogbook.app.domain.model.Child
 import com.familylogbook.app.domain.model.LogEntry
 import com.familylogbook.app.domain.repository.LogbookRepository
@@ -13,6 +15,8 @@ import kotlinx.coroutines.launch
 class HomeViewModel(
     private val repository: LogbookRepository
 ) : ViewModel() {
+    
+    private val adviceEngine = AdviceEngine()
     
     private val _entries = MutableStateFlow<List<LogEntry>>(emptyList())
     val entries: StateFlow<List<LogEntry>> = _entries.asStateFlow()
@@ -43,6 +47,10 @@ class HomeViewModel(
     
     fun refreshEntries() {
         loadEntries()
+    }
+    
+    fun getAdviceForEntry(entry: LogEntry): AdviceTemplate? {
+        return adviceEngine.findAdvice(entry.rawText, entry.category)
     }
 }
 

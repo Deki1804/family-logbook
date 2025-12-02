@@ -7,6 +7,7 @@ enum class Category {
     DEVELOPMENT,
     KINDERGARTEN_SCHOOL,
     HOME,
+    FEEDING,
     OTHER
 }
 

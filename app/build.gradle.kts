@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -72,6 +73,15 @@ dependencies {
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
+    // Firebase BOM (Bill of Materials) - upravlja verzijama
+    implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
+    
+    // Firestore
+    implementation("com.google.firebase:firebase-firestore-ktx")
+    
+    // Firebase Auth (za kasnije)
+    implementation("com.google.firebase:firebase-auth-ktx")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

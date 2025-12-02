@@ -2,6 +2,7 @@ package com.familylogbook.app.domain.classifier
 
 import com.familylogbook.app.domain.model.Category
 import com.familylogbook.app.domain.model.ClassifiedEntryMetadata
+import com.familylogbook.app.domain.model.FeedingType
 import com.familylogbook.app.domain.model.Mood
 
 /**
@@ -17,11 +18,18 @@ class EntryClassifier {
         val category = detectCategory(lowerText)
         val mood = detectMood(lowerText)
         val tags = extractTags(lowerText, category)
+        val temperature = extractTemperature(text)
+        val medicine = extractMedicine(text)
+        val (feedingType, feedingAmount) = extractFeeding(text)
         
         return ClassifiedEntryMetadata(
             category = category,
             tags = tags,
-            mood = mood
+            mood = mood,
+            temperature = temperature,
+            medicineGiven = medicine,
+            feedingType = feedingType,
+            feedingAmount = feedingAmount
         )
     }
     
@@ -31,14 +39,22 @@ class EntryClassifier {
             "fever", "temperature", "sick", "ill", "medicine", "medication", "syrup",
             "doctor", "hospital", "cough", "cold", "flu", "virus", "infection",
             "vaccine", "vaccination", "pain", "ache", "hurt", "injury", "bandage",
-            "tooth", "teeth", "dentist", "zub", "zubić"
+            "tooth", "teeth", "dentist", "zub", "zubić", "temperatur", "vruć",
+            "grč", "grčevi", "colic", "plače", "plač", "crying"
         )
         
         // Sleep keywords
         val sleepKeywords = listOf(
             "sleep", "slept", "asleep", "wake", "woke", "awake", "bedtime",
             "nap", "napping", "tired", "exhausted", "rest", "spavao", "spava",
-            "budan", "budio", "ne spava"
+            "budan", "budio", "ne spava", "trouble sleeping", "can't sleep"
+        )
+        
+        // Feeding keywords
+        val feedingKeywords = listOf(
+            "feeding", "feed", "fed", "dojenje", "dojio", "dojka", "bočica",
+            "bottle", "breast", "mlijeko", "milk", "hranjenje", "hranio",
+            "breast_left", "breast_right", "ml"
         )
         
         // Mood keywords
@@ -70,6 +86,7 @@ class EntryClassifier {
         )
         
         when {
+            feedingKeywords.any { text.contains(it) } -> return Category.FEEDING
             healthKeywords.any { text.contains(it) } -> return Category.HEALTH
             sleepKeywords.any { text.contains(it) } -> return Category.SLEEP
             moodKeywords.any { text.contains(it) } -> return Category.MOOD
@@ -153,6 +170,80 @@ class EntryClassifier {
         
         // Limit to 3 tags max
         return tags.take(3)
+    }
+    
+    private fun extractTemperature(text: String): Float? {
+        // Try to find temperature patterns like "38.5", "38,5", "38", "temperatura 38.4"
+        val patterns = listOf(
+            Regex("(?:temperatur|temp|fever|vruć)[^0-9]*([0-9]+[.,][0-9]+)"),
+            Regex("([0-9]+[.,][0-9]+)[^0-9]*(?:°|celzij|celzija|celsius)"),
+            Regex("([0-9]+)[^0-9]*(?:°|celzij|celzija|celsius)"),
+            Regex("([3][0-9][.,][0-9]+)"), // 30.x to 39.x range
+        )
+        
+        for (pattern in patterns) {
+            val match = pattern.find(text.lowercase())
+            if (match != null) {
+                val tempStr = match.groupValues[1].replace(',', '.')
+                return tempStr.toFloatOrNull()
+            }
+        }
+        
+        return null
+    }
+    
+    private fun extractMedicine(text: String): String? {
+        val lowerText = text.lowercase()
+        val medicineKeywords = listOf(
+            "sirup", "syrup", "paracetamol", "ibuprofen", "panadol", "brufen",
+            "lijek", "medicine", "medication", "tableta", "tablet"
+        )
+        
+        // Simple extraction - if medicine keywords are present, try to extract the medicine name
+        if (medicineKeywords.any { lowerText.contains(it) }) {
+            // Try to find medicine name after keywords
+            for (keyword in medicineKeywords) {
+                val index = lowerText.indexOf(keyword)
+                if (index != -1) {
+                    // Try to extract a word or phrase after the keyword
+                    val afterKeyword = text.substring(index + keyword.length).trim()
+                    val words = afterKeyword.split(Regex("[\\s,.]"))
+                    if (words.isNotEmpty() && words[0].length > 2) {
+                        return words[0].take(50) // Limit length
+                    }
+                    return keyword // Fallback to keyword itself
+                }
+            }
+        }
+        
+        return null
+    }
+    
+    private fun extractFeeding(text: String): Pair<FeedingType?, Int?> {
+        val lowerText = text.lowercase()
+        
+        // Detect feeding type
+        val feedingType = when {
+            lowerText.contains("lijeva") || lowerText.contains("left") -> FeedingType.BREAST_LEFT
+            lowerText.contains("desna") || lowerText.contains("right") -> FeedingType.BREAST_RIGHT
+            lowerText.contains("bočic") || lowerText.contains("bottle") -> FeedingType.BOTTLE
+            lowerText.contains("dojenje") || lowerText.contains("breast") -> {
+                // Default to left if not specified
+                FeedingType.BREAST_LEFT
+            }
+            else -> null
+        }
+        
+        // Extract amount for bottle feeding
+        val amount = if (feedingType == FeedingType.BOTTLE) {
+            val mlPattern = Regex("([0-9]+)\\s*(?:ml|mL|mililitar)")
+            val match = mlPattern.find(lowerText)
+            match?.groupValues?.get(1)?.toIntOrNull()
+        } else {
+            null
+        }
+        
+        return Pair(feedingType, amount)
     }
 }
 

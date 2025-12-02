@@ -70,10 +70,12 @@ class InMemoryLogbookRepository : LogbookRepository {
             id = "entry1",
             childId = "child1",
             timestamp = calendar.timeInMillis,
-            rawText = "Neo had a light fever tonight. Gave him some medicine.",
+            rawText = "Neo had a light fever tonight, temperatura 38.4. Gave him some medicine.",
             category = Category.HEALTH,
             tags = listOf("fever", "medicine"),
-            mood = null
+            mood = null,
+            temperature = 38.4f,
+            medicineGiven = "sirup"
         )
         
         calendar.timeInMillis = now - (1 * 24 * 60 * 60 * 1000L) // 1 day ago
@@ -120,7 +122,30 @@ class InMemoryLogbookRepository : LogbookRepository {
             mood = null
         )
         
-        _entries.value = listOf(entry5, entry4, entry3, entry2, entry1).sortedByDescending { it.timestamp }
+        calendar.timeInMillis = now - (1 * 60 * 60 * 1000L) // 1 hour ago
+        val entry6 = LogEntry(
+            id = "entry6",
+            childId = "child1",
+            timestamp = calendar.timeInMillis,
+            rawText = "Neo ima grčeve već treću večer, plače poslije bočice.",
+            category = Category.HEALTH,
+            tags = listOf("colic", "crying"),
+            mood = Mood.BAD
+        )
+        
+        calendar.timeInMillis = now - (30 * 60 * 1000L) // 30 minutes ago
+        val entry7 = LogEntry(
+            id = "entry7",
+            childId = "child1",
+            timestamp = calendar.timeInMillis,
+            rawText = "Dojio Neo, lijeva dojka, oko 15 minuta.",
+            category = Category.FEEDING,
+            tags = listOf("breastfeeding"),
+            mood = null,
+            feedingType = com.familylogbook.app.domain.model.FeedingType.BREAST_LEFT
+        )
+        
+        _entries.value = listOf(entry7, entry6, entry5, entry4, entry3, entry2, entry1).sortedByDescending { it.timestamp }
     }
 }
 

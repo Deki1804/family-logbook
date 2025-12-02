@@ -21,6 +21,7 @@ import com.familylogbook.app.domain.model.Category
 import com.familylogbook.app.domain.model.Child
 import com.familylogbook.app.domain.model.LogEntry
 import com.familylogbook.app.domain.model.Mood
+import com.familylogbook.app.ui.component.AdviceCard
 import com.familylogbook.app.ui.navigation.Screen
 import com.familylogbook.app.ui.viewmodel.HomeViewModel
 import java.text.SimpleDateFormat
@@ -52,7 +53,8 @@ fun HomeScreen(
                     }
                     LogEntryCard(
                         entry = entry,
-                        child = child
+                        child = child,
+                        viewModel = viewModel
                     )
                 }
             }
@@ -73,9 +75,14 @@ fun HomeScreen(
 @Composable
 fun LogEntryCard(
     entry: LogEntry,
-    child: Child?
+    child: Child?,
+    viewModel: HomeViewModel
 ) {
-    Card(
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         shape = RoundedCornerShape(12.dp)
@@ -170,6 +177,46 @@ fun LogEntryCard(
             entry.mood?.let { mood ->
                 MoodIndicator(mood = mood)
             }
+            
+            // Temperature / Medicine info
+            entry.temperature?.let { temp ->
+                Text(
+                    text = "🌡️ Temperatura: ${temp}°C",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+            
+            entry.medicineGiven?.let { medicine ->
+                Text(
+                    text = "💊 Lijek: $medicine",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+            
+            // Feeding info
+            entry.feedingType?.let { feedingType ->
+                val feedingText = when (feedingType) {
+                    com.familylogbook.app.domain.model.FeedingType.BREAST_LEFT -> "🍼 Dojenje (lijeva)"
+                    com.familylogbook.app.domain.model.FeedingType.BREAST_RIGHT -> "🍼 Dojenje (desna)"
+                    com.familylogbook.app.domain.model.FeedingType.BOTTLE -> "🍼 Bočica${entry.feedingAmount?.let { " - ${it}ml" } ?: ""}"
+                }
+                Text(
+                    text = feedingText,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+        }
+        
+        // Advice Card (if applicable)
+        viewModel.getAdviceForEntry(entry)?.let { advice ->
+            Spacer(modifier = Modifier.height(8.dp))
+            AdviceCard(advice = advice)
         }
     }
 }
@@ -183,6 +230,7 @@ fun CategoryChip(category: Category) {
         Category.DEVELOPMENT -> "Development" to Color(0xFF95E1D3)
         Category.KINDERGARTEN_SCHOOL -> "School" to Color(0xFFAA96DA)
         Category.HOME -> "Home" to Color(0xFFF38181)
+        Category.FEEDING -> "Feeding" to Color(0xFFFFB84D)
         Category.OTHER -> "Other" to Color(0xFFCCCCCC)
     }
     

@@ -57,7 +57,12 @@ class AddEntryViewModel(
             rawText = text,
             category = classification.category,
             tags = classification.tags,
-            mood = classification.mood
+            mood = classification.mood,
+            temperature = classification.temperature,
+            medicineGiven = classification.medicineGiven,
+            medicineTimestamp = classification.medicineGiven?.let { System.currentTimeMillis() },
+            feedingType = classification.feedingType,
+            feedingAmount = classification.feedingAmount
         )
         
         repository.addEntry(entry)
