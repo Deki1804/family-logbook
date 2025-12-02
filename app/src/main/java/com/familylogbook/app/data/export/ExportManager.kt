@@ -1,7 +1,10 @@
 package com.familylogbook.app.data.export
 
+import com.familylogbook.app.domain.model.Category
 import com.familylogbook.app.domain.model.Child
+import com.familylogbook.app.domain.model.FeedingType
 import com.familylogbook.app.domain.model.LogEntry
+import com.familylogbook.app.domain.model.Mood
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -93,6 +96,110 @@ class ExportManager {
         }
         
         return csv.toString()
+    }
+    
+    /**
+     * Parses JSON export and returns children and entries.
+     * @return Pair of (children, entries) or null if parsing fails
+     */
+    fun parseJsonImport(jsonString: String): Pair<List<Child>, List<LogEntry>>? {
+        return try {
+            val json = JSONObject(jsonString)
+            
+            // Parse children
+            val childrenList = mutableListOf<Child>()
+            if (json.has("children")) {
+                val childrenArray = json.getJSONArray("children")
+                for (i in 0 until childrenArray.length()) {
+                    val childObj = childrenArray.getJSONObject(i)
+                    val child = Child(
+                        id = childObj.getString("id"),
+                        name = childObj.getString("name"),
+                        dateOfBirth = if (childObj.has("dateOfBirth") && !childObj.isNull("dateOfBirth")) {
+                            childObj.getLong("dateOfBirth")
+                        } else null,
+                        avatarColor = childObj.getString("avatarColor"),
+                        emoji = childObj.getString("emoji")
+                    )
+                    childrenList.add(child)
+                }
+            }
+            
+            // Parse entries
+            val entriesList = mutableListOf<LogEntry>()
+            if (json.has("entries")) {
+                val entriesArray = json.getJSONArray("entries")
+                for (i in 0 until entriesArray.length()) {
+                    val entryObj = entriesArray.getJSONObject(i)
+                    
+                    // Parse category
+                    val categoryStr = entryObj.getString("category")
+                    val category = try {
+                        Category.valueOf(categoryStr)
+                    } catch (e: Exception) {
+                        Category.OTHER
+                    }
+                    
+                    // Parse mood
+                    val mood = if (entryObj.has("mood") && !entryObj.isNull("mood")) {
+                        try {
+                            Mood.valueOf(entryObj.getString("mood"))
+                        } catch (e: Exception) {
+                            null
+                        }
+                    } else null
+                    
+                    // Parse tags
+                    val tagsList = mutableListOf<String>()
+                    if (entryObj.has("tags")) {
+                        val tagsArray = entryObj.getJSONArray("tags")
+                        for (j in 0 until tagsArray.length()) {
+                            tagsList.add(tagsArray.getString(j))
+                        }
+                    }
+                    
+                    // Parse feeding type
+                    val feedingType = if (entryObj.has("feedingType") && !entryObj.isNull("feedingType")) {
+                        try {
+                            FeedingType.valueOf(entryObj.getString("feedingType"))
+                        } catch (e: Exception) {
+                            null
+                        }
+                    } else null
+                    
+                    val entry = LogEntry(
+                        id = entryObj.getString("id"),
+                        childId = if (entryObj.has("childId") && !entryObj.isNull("childId")) {
+                            entryObj.getString("childId")
+                        } else null,
+                        timestamp = entryObj.getLong("timestamp"),
+                        rawText = entryObj.getString("rawText"),
+                        category = category,
+                        tags = tagsList,
+                        mood = mood,
+                        temperature = if (entryObj.has("temperature") && !entryObj.isNull("temperature")) {
+                            entryObj.getDouble("temperature").toFloat()
+                        } else null,
+                        medicineGiven = if (entryObj.has("medicineGiven") && !entryObj.isNull("medicineGiven")) {
+                            entryObj.getString("medicineGiven")
+                        } else null,
+                        medicineTimestamp = if (entryObj.has("medicineTimestamp") && !entryObj.isNull("medicineTimestamp")) {
+                            entryObj.getLong("medicineTimestamp")
+                        } else null,
+                        feedingType = feedingType,
+                        feedingAmount = if (entryObj.has("feedingAmount") && !entryObj.isNull("feedingAmount")) {
+                            entryObj.getInt("feedingAmount")
+                        } else null
+                    )
+                    entriesList.add(entry)
+                }
+            }
+            
+            Pair(childrenList, entriesList)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
     }
 }
 

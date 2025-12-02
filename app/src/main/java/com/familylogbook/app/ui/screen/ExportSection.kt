@@ -1,25 +1,34 @@
 package com.familylogbook.app.ui.screen
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import com.familylogbook.app.ui.viewmodel.SettingsViewModel
 import kotlinx.coroutines.launch
-import androidx.core.content.FileProvider
 import java.io.File
 import java.io.FileWriter
+import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -27,6 +36,39 @@ import java.util.*
 fun ExportSection(viewModel: SettingsViewModel) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    var showImportDialog by remember { mutableStateOf(false) }
+    var importResult by remember { mutableStateOf<String?>(null) }
+    
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            result.data?.data?.let { uri ->
+                scope.launch {
+                    try {
+                        val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
+                        val jsonString = inputStream?.bufferedReader().use { it?.readText() ?: "" }
+                        
+                        if (jsonString.isNotEmpty()) {
+                            val importResult = viewModel.importFromJson(jsonString)
+                            when (importResult) {
+                                is SettingsViewModel.ImportResult.Success -> {
+                                    importResult = "Successfully imported ${importResult.childrenAdded} children and ${importResult.entriesAdded} entries"
+                                }
+                                is SettingsViewModel.ImportResult.Error -> {
+                                    importResult = "Error: ${importResult.message}"
+                                }
+                            }
+                            showImportDialog = true
+                        }
+                    } catch (e: Exception) {
+                        importResult = "Error reading file: ${e.message}"
+                        showImportDialog = true
+                    }
+                }
+            }
+        }
+    }
     
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -41,13 +83,13 @@ fun ExportSection(viewModel: SettingsViewModel) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "Export Data",
+                text = "Export & Import",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
             
             Text(
-                text = "Export your logbook data to JSON or CSV format",
+                text = "Export your logbook data to JSON or CSV format, or import from JSON backup",
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
@@ -82,7 +124,36 @@ fun ExportSection(viewModel: SettingsViewModel) {
                     Text("CSV", fontSize = 12.sp)
                 }
             }
+            
+            OutlinedButton(
+                onClick = {
+                    val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                        type = "application/json"
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                    }
+                    filePickerLauncher.launch(intent)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Upload, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Import from JSON")
+            }
         }
+    }
+    
+    // Import result dialog
+    if (showImportDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportDialog = false },
+            title = { Text("Import Result") },
+            text = { Text(importResult ?: "Unknown result") },
+            confirmButton = {
+                TextButton(onClick = { showImportDialog = false }) {
+                    Text("OK")
+                }
+            }
+        )
     }
 }
 
@@ -114,4 +185,3 @@ private fun exportAndShare(context: Context, content: String, filename: String, 
         e.printStackTrace()
     }
 }
-

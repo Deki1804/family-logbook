@@ -93,5 +93,40 @@ class SettingsViewModel(
     fun exportToCsv(): String {
         return exportManager.exportToCsv(_children.value, _entries.value)
     }
+    
+    suspend fun importFromJson(jsonString: String): ImportResult {
+        val parsed = exportManager.parseJsonImport(jsonString)
+        if (parsed == null) {
+            return ImportResult.Error("Failed to parse JSON file")
+        }
+        
+        val (children, entries) = parsed
+        
+        // Import children (skip if already exists)
+        val existingChildIds = _children.value.map { it.id }.toSet()
+        children.forEach { child ->
+            if (!existingChildIds.contains(child.id)) {
+                repository.addChild(child)
+            }
+        }
+        
+        // Import entries (skip if already exists)
+        val existingEntryIds = _entries.value.map { it.id }.toSet()
+        entries.forEach { entry ->
+            if (!existingEntryIds.contains(entry.id)) {
+                repository.addEntry(entry)
+            }
+        }
+        
+        return ImportResult.Success(
+            childrenAdded = children.count { !existingChildIds.contains(it.id) },
+            entriesAdded = entries.count { !existingEntryIds.contains(it.id) }
+        )
+    }
+    
+    sealed class ImportResult {
+        data class Success(val childrenAdded: Int, val entriesAdded: Int) : ImportResult()
+        data class Error(val message: String) : ImportResult()
+    }
 }
 
