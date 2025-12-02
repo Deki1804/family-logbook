@@ -11,7 +11,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -318,11 +317,11 @@ fun CategoryStatRow(categoryCount: CategoryCount) {
 @Composable
 fun MoodStatRow(moodCount: MoodCount) {
     val (label, emoji, color) = when (moodCount.mood) {
-        Mood.VERY_BAD -> "Very Bad" to "😢" to Color(0xFFE63946)
-        Mood.BAD -> "Bad" to "😞" to Color(0xFFFF6B6B)
-        Mood.NEUTRAL -> "Neutral" to "😐" to Color(0xFFCCCCCC)
-        Mood.GOOD -> "Good" to "😊" to Color(0xFF4ECDC4)
-        Mood.VERY_GOOD -> "Very Good" to "😄" to Color(0xFF2A9D8F)
+        Mood.VERY_BAD -> Triple("Very Bad", "😢", Color(0xFFE63946))
+        Mood.BAD -> Triple("Bad", "😞", Color(0xFFFF6B6B))
+        Mood.NEUTRAL -> Triple("Neutral", "😐", Color(0xFFCCCCCC))
+        Mood.GOOD -> Triple("Good", "😊", Color(0xFF4ECDC4))
+        Mood.VERY_GOOD -> Triple("Very Good", "😄", Color(0xFF2A9D8F))
     }
     
     Card(
