@@ -1,0 +1,6 @@
+## Template za local.properties
+## Kopiraj ovaj file u local.properties i postavi svoj Android SDK path
+## local.properties se automatski ignorira u .gitignore
+
+sdk.dir=C\:\\Users\\TvojeIme\\AppData\\Local\\Android\\Sdk
+

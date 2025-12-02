@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base application theme - Compose koristi Material3, ovo je samo za splash/legacy -->
+    <style name="Theme.FamilyLogbook" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>
+
