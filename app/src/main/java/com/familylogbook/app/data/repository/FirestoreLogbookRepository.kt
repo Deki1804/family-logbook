@@ -2,6 +2,8 @@ package com.familylogbook.app.data.repository
 
 import com.familylogbook.app.domain.model.Category
 import com.familylogbook.app.domain.model.Child
+import com.familylogbook.app.domain.model.Person
+import com.familylogbook.app.domain.model.Entity
 import com.familylogbook.app.domain.model.FeedingType
 import com.familylogbook.app.domain.model.LogEntry
 import com.familylogbook.app.domain.model.Mood
@@ -23,6 +25,8 @@ class FirestoreLogbookRepository(
     companion object {
         private const val COLLECTION_USERS = "users"
         private const val COLLECTION_CHILDREN = "children"
+        private const val COLLECTION_PERSONS = "persons"
+        private const val COLLECTION_ENTITIES = "entities"
         private const val COLLECTION_ENTRIES = "entries"
     }
     
@@ -31,6 +35,16 @@ class FirestoreLogbookRepository(
         .collection(COLLECTION_USERS)
         .document(userId)
         .collection(COLLECTION_CHILDREN)
+    
+    private val personsCollection = firestore
+        .collection(COLLECTION_USERS)
+        .document(userId)
+        .collection(COLLECTION_PERSONS)
+    
+    private val entitiesCollection = firestore
+        .collection(COLLECTION_USERS)
+        .document(userId)
+        .collection(COLLECTION_ENTITIES)
     
     private val entriesCollection = firestore
         .collection(COLLECTION_USERS)
@@ -140,24 +154,136 @@ class FirestoreLogbookRepository(
         return doc.toChild()
     }
     
+    // ========== PERSONS ==========
+    
+    override fun getAllPersons(): Flow<List<Person>> = callbackFlow {
+        val listener = personsCollection
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    android.util.Log.e("FirestoreLogbookRepository", "Error loading persons: ${error.message}")
+                    trySend(emptyList())
+                    return@addSnapshotListener
+                }
+                
+                if (snapshot != null) {
+                    val persons = snapshot.documents.mapNotNull { doc ->
+                        try {
+                            doc.toPerson()
+                        } catch (e: Exception) {
+                            android.util.Log.e("FirestoreLogbookRepository", "Error parsing person ${doc.id}: ${e.message}")
+                            null
+                        }
+                    }
+                    trySend(persons)
+                } else {
+                    trySend(emptyList())
+                }
+            }
+        
+        awaitClose { listener.remove() }
+    }
+    
+    override suspend fun addPerson(person: Person) {
+        personsCollection
+            .document(person.id)
+            .set(person.toFirestoreMap())
+            .await()
+    }
+    
+    override suspend fun deletePerson(personId: String) {
+        personsCollection
+            .document(personId)
+            .delete()
+            .await()
+    }
+    
+    override suspend fun getPersonById(personId: String): Person? {
+        val doc = personsCollection
+            .document(personId)
+            .get()
+            .await()
+        
+        return doc.toPerson()
+    }
+    
+    // ========== ENTITIES ==========
+    
+    override fun getAllEntities(): Flow<List<Entity>> = callbackFlow {
+        val listener = entitiesCollection
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    android.util.Log.e("FirestoreLogbookRepository", "Error loading entities: ${error.message}")
+                    trySend(emptyList())
+                    return@addSnapshotListener
+                }
+                
+                if (snapshot != null) {
+                    val entities = snapshot.documents.mapNotNull { doc ->
+                        try {
+                            doc.toEntity()
+                        } catch (e: Exception) {
+                            android.util.Log.e("FirestoreLogbookRepository", "Error parsing entity ${doc.id}: ${e.message}")
+                            null
+                        }
+                    }
+                    trySend(entities)
+                } else {
+                    trySend(emptyList())
+                }
+            }
+        
+        awaitClose { listener.remove() }
+    }
+    
+    override suspend fun addEntity(entity: Entity) {
+        entitiesCollection
+            .document(entity.id)
+            .set(entity.toFirestoreMap())
+            .await()
+    }
+    
+    override suspend fun deleteEntity(entityId: String) {
+        entitiesCollection
+            .document(entityId)
+            .delete()
+            .await()
+    }
+    
+    override suspend fun getEntityById(entityId: String): Entity? {
+        val doc = entitiesCollection
+            .document(entityId)
+            .get()
+            .await()
+        
+        return doc.toEntity()
+    }
+    
     // ========== CONVERSION HELPERS ==========
     
     private fun com.google.firebase.firestore.DocumentSnapshot.toLogEntry(): LogEntry? {
         return try {
             LogEntry(
                 id = id,
-                childId = getString("childId"),
+                personId = getString("personId"),
+                entityId = getString("entityId"),
+                childId = getString("childId"), // Backward compatibility
                 timestamp = getLong("timestamp") ?: System.currentTimeMillis(),
                 rawText = getString("rawText") ?: "",
                 category = getString("category")?.let { Category.valueOf(it) } ?: Category.OTHER,
                 tags = (get("tags") as? List<*>)?.mapNotNull { it as? String } ?: emptyList(),
                 mood = getString("mood")?.let { Mood.valueOf(it) },
                 hasAttachment = getBoolean("hasAttachment") ?: false,
+                aiAdvice = getString("aiAdvice"),
+                reminderDate = getLong("reminderDate"),
                 feedingType = getString("feedingType")?.let { FeedingType.valueOf(it) },
                 feedingAmount = (get("feedingAmount") as? Long)?.toInt(),
                 temperature = (get("temperature") as? Double)?.toFloat(),
                 medicineGiven = getString("medicineGiven"),
-                medicineTimestamp = getLong("medicineTimestamp")
+                medicineTimestamp = getLong("medicineTimestamp"),
+                amount = (get("amount") as? Double),
+                currency = getString("currency"),
+                mileage = (get("mileage") as? Long)?.toInt(),
+                serviceType = getString("serviceType")
             )
         } catch (e: Exception) {
             null
@@ -167,18 +293,26 @@ class FirestoreLogbookRepository(
     private fun LogEntry.toFirestoreMap(): Map<String, Any?> {
         return mapOf(
             "id" to id,
-            "childId" to childId,
+            "personId" to personId,
+            "entityId" to entityId,
+            "childId" to childId, // Backward compatibility
             "timestamp" to timestamp,
             "rawText" to rawText,
             "category" to category.name,
             "tags" to tags,
             "mood" to mood?.name,
             "hasAttachment" to hasAttachment,
+            "aiAdvice" to aiAdvice,
+            "reminderDate" to reminderDate,
             "feedingType" to feedingType?.name,
             "feedingAmount" to feedingAmount?.toLong(),
             "temperature" to temperature?.toDouble(),
             "medicineGiven" to medicineGiven,
-            "medicineTimestamp" to medicineTimestamp
+            "medicineTimestamp" to medicineTimestamp,
+            "amount" to amount,
+            "currency" to currency,
+            "mileage" to mileage?.toLong(),
+            "serviceType" to serviceType
         )
     }
     
@@ -203,6 +337,69 @@ class FirestoreLogbookRepository(
             "dateOfBirth" to dateOfBirth,
             "avatarColor" to avatarColor,
             "emoji" to emoji
+        )
+    }
+    
+    // Person conversion helpers
+    private fun com.google.firebase.firestore.DocumentSnapshot.toPerson(): Person? {
+        return try {
+            Person(
+                id = id,
+                name = getString("name") ?: "",
+                type = getString("type")?.let { com.familylogbook.app.domain.model.PersonType.valueOf(it) } 
+                    ?: com.familylogbook.app.domain.model.PersonType.CHILD,
+                dateOfBirth = getLong("dateOfBirth"),
+                avatarColor = getString("avatarColor") ?: "#FF6B6B",
+                emoji = getString("emoji") ?: "👶",
+                relationship = getString("relationship")
+            )
+        } catch (e: Exception) {
+            null
+        }
+    }
+    
+    private fun Person.toFirestoreMap(): Map<String, Any?> {
+        return mapOf(
+            "id" to id,
+            "name" to name,
+            "type" to type.name,
+            "dateOfBirth" to dateOfBirth,
+            "avatarColor" to avatarColor,
+            "emoji" to emoji,
+            "relationship" to relationship
+        )
+    }
+    
+    // Entity conversion helpers
+    private fun com.google.firebase.firestore.DocumentSnapshot.toEntity(): Entity? {
+        return try {
+            val metadataMap = get("metadata") as? Map<*, *>
+            val metadata = metadataMap?.mapNotNull { (k, v) ->
+                (k as? String)?.let { key -> (v as? String)?.let { value -> key to value } }
+            }?.toMap() ?: emptyMap()
+            
+            Entity(
+                id = id,
+                name = getString("name") ?: "",
+                type = getString("type")?.let { com.familylogbook.app.domain.model.EntityType.valueOf(it) }
+                    ?: com.familylogbook.app.domain.model.EntityType.OTHER,
+                emoji = getString("emoji") ?: "🚗",
+                avatarColor = getString("avatarColor") ?: "#4ECDC4",
+                metadata = metadata
+            )
+        } catch (e: Exception) {
+            null
+        }
+    }
+    
+    private fun Entity.toFirestoreMap(): Map<String, Any?> {
+        return mapOf(
+            "id" to id,
+            "name" to name,
+            "type" to type.name,
+            "emoji" to emoji,
+            "avatarColor" to avatarColor,
+            "metadata" to metadata
         )
     }
 }

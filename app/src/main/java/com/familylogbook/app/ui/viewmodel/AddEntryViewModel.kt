@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.familylogbook.app.domain.classifier.EntryClassifier
 import com.familylogbook.app.domain.model.Category
 import com.familylogbook.app.domain.model.Child
+import com.familylogbook.app.domain.model.Person
+import com.familylogbook.app.domain.model.Entity
 import com.familylogbook.app.domain.model.FeedingType
 import com.familylogbook.app.domain.model.LogEntry
 import com.familylogbook.app.domain.repository.LogbookRepository
@@ -20,11 +22,25 @@ class AddEntryViewModel(
     private val classifier: EntryClassifier
 ) : ViewModel() {
     
+    // Legacy Child support
     private val _children = MutableStateFlow<List<Child>>(emptyList())
     val children: StateFlow<List<Child>> = _children.asStateFlow()
     
     private val _selectedChildId = MutableStateFlow<String?>(null)
     val selectedChildId: StateFlow<String?> = _selectedChildId.asStateFlow()
+    
+    // New Person and Entity support
+    private val _persons = MutableStateFlow<List<Person>>(emptyList())
+    val persons: StateFlow<List<Person>> = _persons.asStateFlow()
+    
+    private val _entities = MutableStateFlow<List<Entity>>(emptyList())
+    val entities: StateFlow<List<Entity>> = _entities.asStateFlow()
+    
+    private val _selectedPersonId = MutableStateFlow<String?>(null)
+    val selectedPersonId: StateFlow<String?> = _selectedPersonId.asStateFlow()
+    
+    private val _selectedEntityId = MutableStateFlow<String?>(null)
+    val selectedEntityId: StateFlow<String?> = _selectedEntityId.asStateFlow()
     
     private val _entryText = MutableStateFlow("")
     val entryText: StateFlow<String> = _entryText.asStateFlow()
@@ -49,6 +65,8 @@ class AddEntryViewModel(
     
     init {
         loadChildren()
+        loadPersons()
+        loadEntities()
     }
     
     override fun onCleared() {
@@ -64,8 +82,38 @@ class AddEntryViewModel(
         }
     }
     
+    private fun loadPersons() {
+        viewModelScope.launch {
+            repository.getAllPersons().collect { personsList ->
+                _persons.value = personsList
+            }
+        }
+    }
+    
+    private fun loadEntities() {
+        viewModelScope.launch {
+            repository.getAllEntities().collect { entitiesList ->
+                _entities.value = entitiesList
+            }
+        }
+    }
+    
     fun setSelectedChild(childId: String?) {
         _selectedChildId.value = childId
+        _selectedPersonId.value = childId // Also set as personId for backward compatibility
+        _selectedEntityId.value = null
+    }
+    
+    fun setSelectedPerson(personId: String?) {
+        _selectedPersonId.value = personId
+        _selectedChildId.value = null
+        _selectedEntityId.value = null
+    }
+    
+    fun setSelectedEntity(entityId: String?) {
+        _selectedEntityId.value = entityId
+        _selectedPersonId.value = null
+        _selectedChildId.value = null
     }
     
     fun setEntryText(text: String) {
@@ -121,6 +169,7 @@ class AddEntryViewModel(
             val classification = classifier.classifyEntry(text)
             val entry = LogEntry(
                 childId = childId,
+                personId = childId, // Also set personId for backward compatibility
                 timestamp = startTime,
                 rawText = text,
                 category = Category.FEEDING,
@@ -154,8 +203,15 @@ class AddEntryViewModel(
         
         return try {
             val classification = classifier.classifyEntry(text)
+            
+            // Get AI advice if available
+            val adviceEngine = com.familylogbook.app.domain.classifier.AdviceEngine()
+            val advice = adviceEngine.findAdvice(text, classification.category)
+            
             val entry = LogEntry(
                 childId = _selectedChildId.value,
+                personId = _selectedPersonId.value ?: _selectedChildId.value,
+                entityId = _selectedEntityId.value,
                 rawText = text,
                 category = classification.category,
                 tags = classification.tags,
@@ -164,7 +220,8 @@ class AddEntryViewModel(
                 medicineGiven = classification.medicineGiven,
                 medicineTimestamp = classification.medicineGiven?.let { System.currentTimeMillis() },
                 feedingType = classification.feedingType,
-                feedingAmount = classification.feedingAmount
+                feedingAmount = classification.feedingAmount,
+                aiAdvice = advice?.title // Store advice title for now
             )
             
             repository.addEntry(entry)
@@ -172,6 +229,8 @@ class AddEntryViewModel(
             // Reset form
             _entryText.value = ""
             _selectedChildId.value = null
+            _selectedPersonId.value = null
+            _selectedEntityId.value = null
             
             true
         } catch (e: Exception) {

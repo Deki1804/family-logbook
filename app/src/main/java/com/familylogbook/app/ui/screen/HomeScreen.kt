@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -35,8 +36,12 @@ fun HomeScreen(
     onNavigateToAddEntry: () -> Unit,
     onNavigateToChildProfile: (String) -> Unit = {}
 ) {
-    val entries by viewModel.entries.collectAsState()
+    val entries by viewModel.filteredEntries.collectAsState()
     val children by viewModel.children.collectAsState()
+    val persons by viewModel.persons.collectAsState()
+    val entities by viewModel.entities.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
+    val selectedCategory by viewModel.selectedCategory.collectAsState()
     
     Box(modifier = Modifier.fillMaxSize()) {
         if (entries.isEmpty()) {
@@ -50,6 +55,25 @@ fun HomeScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // Search bar
+                item {
+                    SearchBar(
+                        query = searchQuery,
+                        onQueryChange = { viewModel.setSearchQuery(it) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                
+                // Category filter chips
+                item {
+                    CategoryFilterChips(
+                        selectedCategory = selectedCategory,
+                        onCategorySelected = { category ->
+                            viewModel.setSelectedCategory(if (category == selectedCategory) null else category)
+                        }
+                    )
+                }
+                
                 items(entries) { entry ->
                     val child = entry.childId?.let { childId ->
                         children.find { it.id == childId }
@@ -307,6 +331,43 @@ fun EmptyState(
             Icon(Icons.Default.Add, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
             Text("Add Entry")
+        }
+    }
+}
+
+@Composable
+fun SearchBar(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        modifier = modifier,
+        placeholder = { Text("Search entries...") },
+        leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+        singleLine = true,
+        shape = RoundedCornerShape(12.dp)
+    )
+}
+
+@Composable
+fun CategoryFilterChips(
+    selectedCategory: Category?,
+    onCategorySelected: (Category) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Category.values().take(8).forEach { category ->
+            FilterChip(
+                selected = selectedCategory == category,
+                onClick = { onCategorySelected(category) },
+                label = { Text(category.name) }
+            )
         }
     }
 }
