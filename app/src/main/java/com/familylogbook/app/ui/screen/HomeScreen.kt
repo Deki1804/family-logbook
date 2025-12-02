@@ -343,14 +343,15 @@ fun LogEntryCard(
                 Spacer(modifier = Modifier.height(8.dp))
                 Button(
                     onClick = {
-                        smartHomeManager.triggerGoogleAssistant(entry.rawText)
+                        // Execute command directly - no user voice input needed
+                        smartHomeManager.executeCommand(entry.rawText)
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.tertiary
                     )
                 ) {
-                    Text("Run with Google Assistant")
+                    Text("Execute Command")
                 }
             }
         }
