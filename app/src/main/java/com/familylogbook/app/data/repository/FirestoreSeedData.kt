@@ -15,21 +15,37 @@ import java.util.Calendar
  */
 object FirestoreSeedData {
     
-    suspend fun seedIfEmpty(firestore: FirebaseFirestore = FirebaseFirestore.getInstance()) {
+    suspend fun seedIfEmpty(
+        userId: String,
+        firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
+    ) {
+        val childrenCollection = firestore
+            .collection("users")
+            .document(userId)
+            .collection("children")
+        val entriesCollection = firestore
+            .collection("users")
+            .document(userId)
+            .collection("entries")
+        
         // Check if children collection is empty
-        val childrenSnapshot = firestore.collection("children").get().await()
+        val childrenSnapshot = childrenCollection.get().await()
         if (childrenSnapshot.isEmpty) {
-            seedChildren(firestore)
+            seedChildren(userId, firestore)
         }
         
         // Check if entries collection is empty
-        val entriesSnapshot = firestore.collection("entries").get().await()
+        val entriesSnapshot = entriesCollection.get().await()
         if (entriesSnapshot.isEmpty) {
-            seedEntries(firestore)
+            seedEntries(userId, firestore)
         }
     }
     
-    private suspend fun seedChildren(firestore: FirebaseFirestore) {
+    private suspend fun seedChildren(userId: String, firestore: FirebaseFirestore) {
+        val childrenCollection = firestore
+            .collection("users")
+            .document(userId)
+            .collection("children")
         val child1 = Child(
             id = "child1",
             name = "Neo",
@@ -43,11 +59,15 @@ object FirestoreSeedData {
             emoji = "👧"
         )
         
-        firestore.collection("children").document(child1.id).set(child1.toFirestoreMap()).await()
-        firestore.collection("children").document(child2.id).set(child2.toFirestoreMap()).await()
+        childrenCollection.document(child1.id).set(child1.toFirestoreMap()).await()
+        childrenCollection.document(child2.id).set(child2.toFirestoreMap()).await()
     }
     
-    private suspend fun seedEntries(firestore: FirebaseFirestore) {
+    private suspend fun seedEntries(userId: String, firestore: FirebaseFirestore) {
+        val entriesCollection = firestore
+            .collection("users")
+            .document(userId)
+            .collection("entries")
         val now = System.currentTimeMillis()
         val calendar = Calendar.getInstance()
         
@@ -133,7 +153,7 @@ object FirestoreSeedData {
         
         val entries = listOf(entry1, entry2, entry3, entry4, entry5, entry6, entry7)
         entries.forEach { entry ->
-            firestore.collection("entries").document(entry.id).set(entry.toFirestoreMap()).await()
+            entriesCollection.document(entry.id).set(entry.toFirestoreMap()).await()
         }
     }
     

@@ -26,7 +26,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.familylogbook.app.data.auth.AuthManager
 import com.familylogbook.app.data.repository.FirestoreLogbookRepository
+import com.familylogbook.app.ui.screen.SettingsScreen
 import com.familylogbook.app.data.repository.FirestoreSeedData
 import com.familylogbook.app.data.repository.InMemoryLogbookRepository
 import com.familylogbook.app.domain.classifier.EntryClassifier
@@ -34,6 +36,7 @@ import com.familylogbook.app.domain.repository.LogbookRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import com.familylogbook.app.ui.navigation.Screen
 import com.familylogbook.app.ui.screen.AddEntryScreen
 import com.familylogbook.app.ui.screen.ChildProfileScreen
@@ -51,25 +54,34 @@ class MainActivity : ComponentActivity() {
     // Simple DI - in a real app, use Hilt or Koin
     // Switch between InMemoryLogbookRepository (for testing) and FirestoreLogbookRepository (for production)
     private val useFirestore = true // Set to false to use in-memory repository
-    private val repository: LogbookRepository = if (useFirestore) {
-        FirestoreLogbookRepository()
-    } else {
-        InMemoryLogbookRepository()
-    }
-    private val classifier: EntryClassifier = EntryClassifier()
+    private val authManager = AuthManager()
+    private val classifier = EntryClassifier()
+    
+    // Repository will be initialized after Auth
+    private lateinit var repository: LogbookRepository
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Seed Firestore with sample data if using Firestore and database is empty
-        if (useFirestore) {
+        // Initialize repository based on Auth
+        repository = if (useFirestore) {
+            // Ensure user is signed in (anonymous if needed) before creating repository
+            val userId = runBlocking {
+                authManager.ensureSignedIn()
+            }
+            
+            // Seed Firestore with sample data if database is empty
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    FirestoreSeedData.seedIfEmpty()
+                    FirestoreSeedData.seedIfEmpty(userId)
                 } catch (e: Exception) {
                     // Ignore errors - database might already have data
                 }
             }
+            
+            FirestoreLogbookRepository(userId = userId)
+        } else {
+            InMemoryLogbookRepository()
         }
         
         setContent {
@@ -80,7 +92,8 @@ class MainActivity : ComponentActivity() {
                 ) {
                     FamilyLogbookApp(
                         repository = repository,
-                        classifier = classifier
+                        classifier = classifier,
+                        authManager = if (useFirestore) authManager else null
                     )
                 }
             }
@@ -101,7 +114,8 @@ sealed class BottomNavItem(
 @Composable
 fun FamilyLogbookApp(
     repository: LogbookRepository,
-    classifier: EntryClassifier
+    classifier: EntryClassifier,
+    authManager: AuthManager? = null
 ) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -185,7 +199,10 @@ fun FamilyLogbookApp(
                 val viewModel: SettingsViewModel = viewModel {
                     SettingsViewModel(repository)
                 }
-                SettingsScreen(viewModel = viewModel)
+                SettingsScreen(
+                    viewModel = viewModel,
+                    authManager = authManager
+                )
             }
             
             composable(

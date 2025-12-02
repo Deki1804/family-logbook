@@ -20,13 +20,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.familylogbook.app.data.auth.AuthManager
 import com.familylogbook.app.domain.model.Child
 import com.familylogbook.app.ui.viewmodel.SettingsViewModel
 import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(
-    viewModel: SettingsViewModel
+    viewModel: SettingsViewModel,
+    authManager: AuthManager? = null
 ) {
     val children by viewModel.children.collectAsState()
     val newChildName by viewModel.newChildName.collectAsState()
@@ -44,6 +46,13 @@ fun SettingsScreen(
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold
         )
+        
+        // Account Info
+        authManager?.let { auth ->
+            AccountInfoCard(authManager = auth)
+        }
+        
+        Divider()
         
         // Add child section
         Card(

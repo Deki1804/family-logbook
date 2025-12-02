@@ -16,18 +16,31 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.tasks.await
 
 class FirestoreLogbookRepository(
+    private val userId: String, // Required: user ID from Firebase Auth
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
 ) : LogbookRepository {
     
     companion object {
+        private const val COLLECTION_USERS = "users"
         private const val COLLECTION_CHILDREN = "children"
         private const val COLLECTION_ENTRIES = "entries"
     }
     
+    // User-scoped collection paths
+    private val childrenCollection = firestore
+        .collection(COLLECTION_USERS)
+        .document(userId)
+        .collection(COLLECTION_CHILDREN)
+    
+    private val entriesCollection = firestore
+        .collection(COLLECTION_USERS)
+        .document(userId)
+        .collection(COLLECTION_ENTRIES)
+    
     // ========== ENTRIES ==========
     
     override fun getAllEntries(): Flow<List<LogEntry>> = callbackFlow {
-        val listener = firestore.collection(COLLECTION_ENTRIES)
+        val listener = entriesCollection
             .orderBy("timestamp", Query.Direction.DESCENDING)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
@@ -47,14 +60,14 @@ class FirestoreLogbookRepository(
     }
     
     override suspend fun addEntry(entry: LogEntry) {
-        firestore.collection(COLLECTION_ENTRIES)
+        entriesCollection
             .document(entry.id)
             .set(entry.toFirestoreMap())
             .await()
     }
     
     override suspend fun deleteEntry(entryId: String) {
-        firestore.collection(COLLECTION_ENTRIES)
+        entriesCollection
             .document(entryId)
             .delete()
             .await()
@@ -63,7 +76,7 @@ class FirestoreLogbookRepository(
     // ========== CHILDREN ==========
     
     override fun getAllChildren(): Flow<List<Child>> = callbackFlow {
-        val listener = firestore.collection(COLLECTION_CHILDREN)
+        val listener = childrenCollection
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     close(error)
@@ -82,21 +95,21 @@ class FirestoreLogbookRepository(
     }
     
     override suspend fun addChild(child: Child) {
-        firestore.collection(COLLECTION_CHILDREN)
+        childrenCollection
             .document(child.id)
             .set(child.toFirestoreMap())
             .await()
     }
     
     override suspend fun deleteChild(childId: String) {
-        firestore.collection(COLLECTION_CHILDREN)
+        childrenCollection
             .document(childId)
             .delete()
             .await()
     }
     
     override suspend fun getChildById(childId: String): Child? {
-        val doc = firestore.collection(COLLECTION_CHILDREN)
+        val doc = childrenCollection
             .document(childId)
             .get()
             .await()
