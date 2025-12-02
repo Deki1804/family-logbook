@@ -13,8 +13,6 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsControllerCompat
 
 private val DarkColorScheme = darkColorScheme(
     primary = Purple80,
@@ -50,8 +48,9 @@ fun FamilyLogbookTheme(
         SideEffect {
             val window = (view.context as Activity).window
             window.statusBarColor = colorScheme.primary.toArgb()
-            val insetsController = WindowCompat.getWindowInsetsController(window, view)
-            insetsController?.isAppearanceLightStatusBars = !darkTheme
+            // Note: WindowCompat.getWindowInsetsController requires androidx.core:core-ktx:1.5.0+
+            // For now, we'll just set the status bar color
+            // Status bar appearance can be controlled via AndroidManifest.xml or SystemUI flags if needed
         }
     }
 
