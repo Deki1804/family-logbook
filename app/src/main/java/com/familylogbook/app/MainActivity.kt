@@ -41,6 +41,7 @@ import com.familylogbook.app.ui.navigation.Screen
 import com.familylogbook.app.ui.screen.AddEntryScreen
 import com.familylogbook.app.ui.screen.ChildProfileScreen
 import com.familylogbook.app.ui.screen.HomeScreen
+import com.familylogbook.app.ui.screen.LoginScreen
 import com.familylogbook.app.ui.screen.SettingsScreen
 import com.familylogbook.app.ui.screen.StatsScreen
 import com.familylogbook.app.ui.theme.FamilyLogbookTheme
@@ -201,8 +202,29 @@ fun FamilyLogbookApp(
                 }
                 SettingsScreen(
                     viewModel = viewModel,
-                    authManager = authManager
+                    authManager = authManager,
+                    onNavigateToLogin = {
+                        navController.navigate(Screen.Login.route)
+                    }
                 )
+            }
+            
+            composable(Screen.Login.route) {
+                authManager?.let { auth ->
+                    LoginScreen(
+                        authManager = auth,
+                        isAnonymous = auth.isAnonymous(),
+                        onUpgradeSuccess = {
+                            navController.popBackStack()
+                        },
+                        onCancel = {
+                            navController.popBackStack()
+                        }
+                    )
+                } ?: run {
+                    // No auth manager - shouldn't happen, but handle gracefully
+                    Text("Authentication not available")
+                }
             }
             
             composable(

@@ -11,7 +11,10 @@ import androidx.compose.ui.unit.sp
 import com.familylogbook.app.data.auth.AuthManager
 
 @Composable
-fun AccountInfoCard(authManager: AuthManager) {
+fun AccountInfoCard(
+    authManager: AuthManager,
+    onUpgradeClick: () -> Unit = {}
+) {
     val currentUser = authManager.getCurrentUser()
     val isAnonymous = authManager.isAnonymous()
     val userId = authManager.getCurrentUserId()
@@ -85,13 +88,13 @@ fun AccountInfoCard(authManager: AuthManager) {
                 )
             }
             
-            // TODO: Upgrade account button (for future implementation)
+            // Upgrade account button
             if (isAnonymous) {
                 OutlinedButton(
-                    onClick = { /* TODO: Implement upgrade to email/password or Google */ },
+                    onClick = onUpgradeClick,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Upgrade Account (Coming Soon)")
+                    Text("Upgrade Account")
                 }
             }
         }

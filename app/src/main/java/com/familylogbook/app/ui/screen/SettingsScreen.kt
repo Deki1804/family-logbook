@@ -28,7 +28,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
-    authManager: AuthManager? = null
+    authManager: AuthManager? = null,
+    onNavigateToLogin: () -> Unit = {}
 ) {
     val children by viewModel.children.collectAsState()
     val newChildName by viewModel.newChildName.collectAsState()
@@ -49,7 +50,10 @@ fun SettingsScreen(
         
         // Account Info
         authManager?.let { auth ->
-            AccountInfoCard(authManager = auth)
+            AccountInfoCard(
+                authManager = auth,
+                onUpgradeClick = onNavigateToLogin
+            )
         }
         
         Divider()
