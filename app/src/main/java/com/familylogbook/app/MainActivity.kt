@@ -18,6 +18,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -174,11 +175,16 @@ fun FamilyLogbookApp(
             startDestination = Screen.Home.route,
             modifier = Modifier.padding(paddingValues)
         ) {
-            // Home route with optional category filter
+            // Home route with optional category and person filters
             composable(
-                route = "${Screen.Home.route}?category={category}",
+                route = "${Screen.Home.route}?category={category}&person={person}",
                 arguments = listOf(
                     navArgument("category") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                        nullable = true
+                    },
+                    navArgument("person") {
                         type = NavType.StringType
                         defaultValue = ""
                         nullable = true
@@ -189,9 +195,11 @@ fun FamilyLogbookApp(
                     HomeViewModel(repository)
                 }
                 
-                // Set category filter if provided
+                // Set category and person filters if provided
                 val categoryParam = backStackEntry.arguments?.getString("category")
-                androidx.compose.runtime.LaunchedEffect(categoryParam) {
+                val personParam = backStackEntry.arguments?.getString("person")
+                
+                androidx.compose.runtime.LaunchedEffect(categoryParam, personParam) {
                     if (!categoryParam.isNullOrEmpty()) {
                         try {
                             val category = com.familylogbook.app.domain.model.Category.valueOf(categoryParam)
@@ -199,6 +207,9 @@ fun FamilyLogbookApp(
                         } catch (e: Exception) {
                             // Invalid category, ignore
                         }
+                    }
+                    if (!personParam.isNullOrEmpty()) {
+                        viewModel.setSelectedPerson(personParam)
                     }
                 }
                 
@@ -232,11 +243,16 @@ fun FamilyLogbookApp(
                 val homeViewModel: HomeViewModel = viewModel {
                     HomeViewModel(repository)
                 }
+                
+                // Get currently selected person from HomeViewModel
+                val selectedPersonId by homeViewModel.selectedPersonId.collectAsState()
+                
                 StatsScreen(
                     viewModel = statsViewModel,
                     onCategoryClick = { category ->
-                        // Navigate to Home with category filter
-                        navController.navigate("home?category=${category.name}") {
+                        // Build navigation URL with category and optional person filter
+                        val personParam = if (selectedPersonId != null) "&person=$selectedPersonId" else ""
+                        navController.navigate("home?category=${category.name}$personParam") {
                             // Clear back stack so back button doesn't go to Stats
                             popUpTo(Screen.Home.route) {
                                 inclusive = false

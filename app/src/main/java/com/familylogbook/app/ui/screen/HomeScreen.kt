@@ -83,6 +83,13 @@ fun HomeScreen(
                     )
                 }
                 
+                // Finance summary card (when FINANCE category is selected)
+                if (selectedCategory == Category.FINANCE && entries.isNotEmpty()) {
+                    item {
+                        FinanceSummaryCard(entries = entries)
+                    }
+                }
+                
                 items(entries) { entry ->
                     val child = entry.childId?.let { childId ->
                         children.find { it.id == childId }
@@ -470,6 +477,101 @@ fun SearchBar(
         singleLine = true,
         shape = RoundedCornerShape(12.dp)
     )
+}
+
+@Composable
+fun FinanceSummaryCard(entries: List<LogEntry>) {
+    val financeEntries = entries.filter { it.category == Category.FINANCE && it.amount != null }
+    
+    if (financeEntries.isEmpty()) return
+    
+    val totalAmount = financeEntries.sumOf { it.amount ?: 0.0 }
+    val currency = financeEntries.firstOrNull()?.currency ?: "€"
+    val entryCount = financeEntries.size
+    
+    // Group by currency if multiple currencies exist
+    val amountsByCurrency = financeEntries
+        .groupBy { it.currency ?: "€" }
+        .mapValues { (_, entries) -> entries.sumOf { it.amount ?: 0.0 } }
+    
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "💰 Finance Summary",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+                Text(
+                    text = "$entryCount entries",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                )
+            }
+            
+            if (amountsByCurrency.size == 1) {
+                // Single currency
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Total:",
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    Text(
+                        text = String.format("%.2f %s", totalAmount, currency),
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            } else {
+                // Multiple currencies
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    amountsByCurrency.forEach { (curr, amount) ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Total ($curr):",
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            Text(
+                                text = String.format("%.2f %s", amount, curr),
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
