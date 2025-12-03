@@ -7,6 +7,10 @@ sealed class Screen(val route: String) {
     object AddEntry : Screen("add_entry")
     object Login : Screen("login")
     
+    companion object {
+        fun HomeWithCategory(category: String) = "home?category=$category"
+    }
+    
     data class ChildProfile(val childId: String) : Screen("child_profile/{childId}") {
         companion object {
             const val ROUTE = "child_profile/{childId}"

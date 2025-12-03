@@ -17,6 +17,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -173,10 +174,34 @@ fun FamilyLogbookApp(
             startDestination = Screen.Home.route,
             modifier = Modifier.padding(paddingValues)
         ) {
-            composable(Screen.Home.route) {
+            // Home route with optional category filter
+            composable(
+                route = "${Screen.Home.route}?category={category}",
+                arguments = listOf(
+                    navArgument("category") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                        nullable = true
+                    }
+                )
+            ) { backStackEntry ->
                 val viewModel: HomeViewModel = viewModel {
                     HomeViewModel(repository)
                 }
+                
+                // Set category filter if provided
+                val categoryParam = backStackEntry.arguments?.getString("category")
+                androidx.compose.runtime.LaunchedEffect(categoryParam) {
+                    if (!categoryParam.isNullOrEmpty()) {
+                        try {
+                            val category = com.familylogbook.app.domain.model.Category.valueOf(categoryParam)
+                            viewModel.setSelectedCategory(category)
+                        } catch (e: Exception) {
+                            // Invalid category, ignore
+                        }
+                    }
+                }
+                
                 HomeScreen(
                     viewModel = viewModel,
                     onNavigateToAddEntry = {
@@ -210,7 +235,14 @@ fun FamilyLogbookApp(
                 StatsScreen(
                     viewModel = statsViewModel,
                     onCategoryClick = { category ->
-                        navController.navigate("category_detail/${category.name}")
+                        // Navigate to Home with category filter
+                        navController.navigate("home?category=${category.name}") {
+                            // Clear back stack so back button doesn't go to Stats
+                            popUpTo(Screen.Home.route) {
+                                inclusive = false
+                            }
+                            launchSingleTop = true
+                        }
                     }
                 )
             }
