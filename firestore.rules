@@ -1,0 +1,31 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users mogu čitati/pisati samo svoje podatke
+    match /users/{userId} {
+      // Korisnik mora biti autentificiran i mora biti vlasnik svojih podataka
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      
+      // Persons collection
+      match /persons/{personId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      
+      // Entities collection
+      match /entities/{entityId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      
+      // Entries collection
+      match /entries/{entryId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      
+      // Legacy: Children collection (backward compatibility)
+      match /children/{childId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+  }
+}
+

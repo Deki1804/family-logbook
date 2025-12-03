@@ -360,7 +360,10 @@ fun LogEntryCard(
         // Advice Card (if applicable)
         viewModel.getAdviceForEntry(entry)?.let { advice ->
             Spacer(modifier = Modifier.height(8.dp))
-            AdviceCard(advice = advice)
+            AdviceCard(
+                advice = advice,
+                category = entry.category
+            )
         }
     }
 }

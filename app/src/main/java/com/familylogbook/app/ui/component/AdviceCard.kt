@@ -15,10 +15,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.familylogbook.app.domain.model.AdviceTemplate
+import com.familylogbook.app.domain.model.Category
 
 @Composable
 fun AdviceCard(
     advice: AdviceTemplate,
+    category: Category? = null,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -113,18 +115,25 @@ fun AdviceCard(
                 }
             }
             
-            // General disclaimer (always shown)
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Text(
-                    text = "💡 Ovo nisu medicinske upute, već opći savjeti. Kod sumnje uvijek kontaktirajte liječnika.",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(10.dp),
-                    lineHeight = 14.sp
-                )
+            // General disclaimer (only for medical categories)
+            val isMedicalCategory = category in listOf(
+                Category.HEALTH,
+                Category.FEEDING
+            )
+            
+            if (isMedicalCategory) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        text = "💡 Ovo nisu medicinske upute, već opći savjeti. Kod sumnje uvijek kontaktirajte liječnika.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(10.dp),
+                        lineHeight = 14.sp
+                    )
+                }
             }
         }
     }
