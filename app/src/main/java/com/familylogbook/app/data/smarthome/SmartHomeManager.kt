@@ -11,20 +11,28 @@ import android.net.Uri
 class SmartHomeManager(private val context: Context) {
     
     /**
+     * Result class for command execution.
+     */
+    sealed class CommandResult {
+        data object Success : CommandResult()
+        data class Error(val message: String) : CommandResult()
+    }
+    
+    /**
      * Executes a smart home command by sending it directly to Google Assistant.
      * The user does NOT need to speak - the command is executed automatically.
      * 
      * @param userText The original user input (e.g., "Upali rumbu")
-     * @return true if the command was sent successfully, false otherwise
+     * @return CommandResult.Success if the command was sent successfully, CommandResult.Error otherwise
      */
-    fun executeCommand(userText: String): Boolean {
+    fun executeCommand(userText: String): CommandResult {
         try {
             // Parse the user text into a Google Assistant command
             val command = SmartHomeCommandParser.parseCommand(userText)
             
             if (command == null) {
                 android.util.Log.w("SmartHomeManager", "Could not parse command: $userText")
-                return false
+                return CommandResult.Error("Ne mogu razumjeti komandu. Pokušaj koristiti jasnije naredbe poput 'Upali svjetla' ili 'Postavi temperaturu na 22 stupnja'.")
             }
             
             android.util.Log.d("SmartHomeManager", "Executing command: $command")
@@ -40,7 +48,7 @@ class SmartHomeManager(private val context: Context) {
             // Try to launch with the command
             if (intent.resolveActivity(context.packageManager) != null) {
                 context.startActivity(intent)
-                return true
+                return CommandResult.Success
             }
             
             // Method 2: Use Google Assistant deep link with query parameter
@@ -55,7 +63,7 @@ class SmartHomeManager(private val context: Context) {
                 
                 if (assistantIntent.resolveActivity(context.packageManager) != null) {
                     context.startActivity(assistantIntent)
-                    return true
+                    return CommandResult.Success
                 }
             } catch (e: Exception) {
                 android.util.Log.d("SmartHomeManager", "Deep link method failed: ${e.message}")
@@ -71,7 +79,7 @@ class SmartHomeManager(private val context: Context) {
                 
                 if (altIntent.resolveActivity(context.packageManager) != null) {
                     context.startActivity(altIntent)
-                    return true
+                    return CommandResult.Success
                 }
             } catch (e: Exception) {
                 android.util.Log.d("SmartHomeManager", "Alternative deep link failed: ${e.message}")
@@ -86,15 +94,23 @@ class SmartHomeManager(private val context: Context) {
             
             if (fallbackIntent.resolveActivity(context.packageManager) != null) {
                 context.startActivity(fallbackIntent)
-                return true
+                return CommandResult.Success
             }
             
             android.util.Log.w("SmartHomeManager", "No Assistant app found")
-            return false
+            return CommandResult.Error("Google Assistant nije dostupan. Provjeri da li je instaliran na tvom uređaju.")
             
         } catch (e: Exception) {
             android.util.Log.e("SmartHomeManager", "Error executing command: ${e.message}", e)
-            return false
+            val errorMessage = when {
+                e.message?.contains("Google Assistant", ignoreCase = true) == true -> 
+                    "Google Assistant nije dostupan. Provjeri da li je instaliran."
+                e.message?.contains("network", ignoreCase = true) == true ->
+                    "Greška mreže. Provjeri internetsku vezu."
+                else -> 
+                    "Ne mogu poslati komandu. Provjeri da li je pametna kuća povezana."
+            }
+            return CommandResult.Error(errorMessage)
         }
     }
     
