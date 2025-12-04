@@ -1,8 +1,15 @@
 package com.familylogbook.app
 
+import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.app.NotificationManagerCompat
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -30,6 +37,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.familylogbook.app.data.auth.AuthManager
+import com.familylogbook.app.data.notification.ReminderScheduler
 import com.familylogbook.app.data.repository.FirestoreLogbookRepository
 import com.familylogbook.app.ui.screen.SettingsScreen
 import com.familylogbook.app.data.repository.FirestoreSeedData
@@ -44,6 +52,7 @@ import com.familylogbook.app.ui.navigation.Screen
 import com.familylogbook.app.ui.screen.AddEntryScreen
 import com.familylogbook.app.ui.screen.ChildProfileScreen
 import com.familylogbook.app.ui.screen.PersonProfileScreen
+import com.familylogbook.app.ui.screen.EntityProfileScreen
 import com.familylogbook.app.ui.screen.CategoryDetailScreen
 import com.familylogbook.app.ui.screen.HomeScreen
 import com.familylogbook.app.ui.screen.LoginScreen
@@ -77,6 +86,12 @@ class MainActivity : ComponentActivity() {
                     authManager.ensureSignedIn()
                 }
                 
+                // Store userId in shared preferences for ReminderWorker
+                getSharedPreferences("app_prefs", MODE_PRIVATE)
+                    .edit()
+                    .putString("user_id", userId)
+                    .apply()
+                
                 // Seed Firestore with sample data if database is empty
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
@@ -97,6 +112,10 @@ class MainActivity : ComponentActivity() {
         } else {
             InMemoryLogbookRepository()
         }
+        
+        // Start reminder scheduler for notifications
+        val reminderScheduler = ReminderScheduler(this)
+        reminderScheduler.startPeriodicReminderCheck()
         
         setContent {
             FamilyLogbookTheme {
@@ -120,9 +139,9 @@ sealed class BottomNavItem(
     val title: String,
     val icon: ImageVector
 ) {
-    object Home : BottomNavItem(Screen.Home.route, "Home", Icons.Default.Home)
-    object Stats : BottomNavItem(Screen.Stats.route, "Stats", Icons.Default.ShowChart)
-    object Settings : BottomNavItem(Screen.Settings.route, "Settings", Icons.Default.Settings)
+    object Home : BottomNavItem(Screen.Home.route, "Početna", Icons.Default.Home)
+    object Stats : BottomNavItem(Screen.Stats.route, "Statistika", Icons.Default.ShowChart)
+    object Settings : BottomNavItem(Screen.Settings.route, "Postavke", Icons.Default.Settings)
 }
 
 @Composable
@@ -135,6 +154,30 @@ fun FamilyLogbookApp(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     
+    val context = LocalContext.current
+    
+    // Check and request notification permission for Android 13+
+    val notificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
+    
+    val requestPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (!isGranted) {
+            // Permission denied - notifications won't work
+            // User can enable it later in Settings
+            android.util.Log.w("FamilyLogbookApp", "Notification permission denied")
+        }
+    }
+    
+    // Request notification permission on first launch (Android 13+)
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (!notificationsEnabled) {
+                requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+    
     val bottomNavItems = listOf(
         BottomNavItem.Home,
         BottomNavItem.Stats,
@@ -143,11 +186,22 @@ fun FamilyLogbookApp(
     
     Scaffold(
         bottomBar = {
-            if (currentRoute in listOf(Screen.Home.route, Screen.Stats.route, Screen.Settings.route)) {
+            // Check if current route starts with any of the main routes (to handle query params)
+            val isMainRoute = currentRoute?.startsWith(Screen.Home.route) == true ||
+                    currentRoute == Screen.Stats.route ||
+                    currentRoute == Screen.Settings.route
+            
+            if (isMainRoute) {
                 NavigationBar {
                     bottomNavItems.forEach { item ->
+                        // Check if current route matches this item (handle query params for Home)
+                        val isSelected = when {
+                            item.route == Screen.Home.route -> currentRoute?.startsWith(Screen.Home.route) == true
+                            else -> currentRoute == item.route
+                        }
+                        
                         NavigationBarItem(
-                            selected = currentRoute == item.route,
+                            selected = isSelected,
                             onClick = {
                                 navController.navigate(item.route) {
                                     popUpTo(Screen.Home.route) {
@@ -218,21 +272,61 @@ fun FamilyLogbookApp(
                     onNavigateToAddEntry = {
                         navController.navigate(Screen.AddEntry.route)
                     },
-                    onNavigateToChildProfile = { childId ->
-                        navController.navigate(Screen.ChildProfile.createRoute(childId))
+                    onNavigateToEditEntry = { entryId ->
+                        navController.navigate("${Screen.AddEntry.route}?entryId=$entryId")
+                    },
+                    onNavigateToPersonProfile = { personId ->
+                        navController.navigate(Screen.PersonProfile.createRoute(personId))
+                    },
+                    onNavigateToEntityProfile = { entityId ->
+                        navController.navigate(Screen.EntityProfile.createRoute(entityId))
+                    },
+                    onNavigateToCategoryDetail = { category ->
+                        // Category filtering is handled internally
                     }
                 )
             }
             
-            composable(Screen.AddEntry.route) {
+            composable(
+                route = "${Screen.AddEntry.route}?entryId={entryId}&entityId={entityId}&category={category}",
+                arguments = listOf(
+                    navArgument("entryId") {
+                        type = androidx.navigation.NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                    navArgument("entityId") {
+                        type = androidx.navigation.NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                    navArgument("category") {
+                        type = androidx.navigation.NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
+                )
+            ) { backStackEntry ->
+                val entryId = backStackEntry.arguments?.getString("entryId")
+                val entityId = backStackEntry.arguments?.getString("entityId")
+                val categoryParam = backStackEntry.arguments?.getString("category")
                 val viewModel: AddEntryViewModel = viewModel {
                     AddEntryViewModel(repository, classifier)
+                }
+                
+                // Pre-populate entity/category if provided (quick actions from entity)
+                androidx.compose.runtime.LaunchedEffect(entityId, categoryParam) {
+                    if (entityId != null) {
+                        viewModel.setSelectedEntity(entityId)
+                    }
+                    // Category is currently inferred from text; param reserved for future use
                 }
                 AddEntryScreen(
                     viewModel = viewModel,
                     onNavigateBack = {
                         navController.popBackStack()
-                    }
+                    },
+                    entryId = entryId
                 )
             }
             
@@ -258,6 +352,8 @@ fun FamilyLogbookApp(
                                 inclusive = false
                             }
                             launchSingleTop = true
+                            // Don't restore scroll state when navigating with filter - always start from top
+                            restoreState = false
                         }
                     }
                 )
@@ -295,6 +391,9 @@ fun FamilyLogbookApp(
                     authManager = authManager,
                     onNavigateToLogin = {
                         navController.navigate(Screen.Login.route)
+                    },
+                    onNavigateToAddEntryForEntity = { entityId, category ->
+                        navController.navigate("${Screen.AddEntry.route}?entityId=$entityId&category=${category.name}")
                     }
                 )
             }
@@ -313,7 +412,7 @@ fun FamilyLogbookApp(
                     )
                 } ?: run {
                     // No auth manager - shouldn't happen, but handle gracefully
-                    Text("Authentication not available")
+                    Text("Autentifikacija nije dostupna")
                 }
             }
             
@@ -341,6 +440,20 @@ fun FamilyLogbookApp(
                 }
                 PersonProfileScreen(
                     personId = personId,
+                    viewModel = viewModel
+                )
+            }
+            
+            composable(
+                route = Screen.EntityProfile.ROUTE,
+                arguments = listOf(navArgument("entityId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val entityId = backStackEntry.arguments?.getString("entityId") ?: return@composable
+                val viewModel: HomeViewModel = viewModel {
+                    HomeViewModel(repository)
+                }
+                EntityProfileScreen(
+                    entityId = entityId,
                     viewModel = viewModel
                 )
             }
