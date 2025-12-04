@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -56,6 +57,7 @@ import com.familylogbook.app.ui.screen.EntityProfileScreen
 import com.familylogbook.app.ui.screen.CategoryDetailScreen
 import com.familylogbook.app.ui.screen.HomeScreen
 import com.familylogbook.app.ui.screen.LoginScreen
+import com.familylogbook.app.ui.screen.OnboardingScreen
 import com.familylogbook.app.ui.screen.SettingsScreen
 import com.familylogbook.app.ui.screen.StatsScreen
 import com.familylogbook.app.ui.theme.FamilyLogbookTheme
@@ -156,6 +158,40 @@ fun FamilyLogbookApp(
     
     val context = LocalContext.current
     
+    // Check onboarding status
+    val settingsViewModel: SettingsViewModel = viewModel {
+        SettingsViewModel(repository)
+    }
+    val persons by settingsViewModel.persons.collectAsState()
+    
+    val sharedPrefs = remember { 
+        context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE) 
+    }
+    
+    // Auto-complete onboarding if user already has persons (for existing users)
+    LaunchedEffect(persons) {
+        if (persons.isNotEmpty() && !sharedPrefs.getBoolean("onboarding_completed", false)) {
+            sharedPrefs.edit()
+                .putBoolean("onboarding_completed", true)
+                .apply()
+        }
+    }
+    
+    // Determine start destination - if user has persons, onboarding is automatically complete
+    val onboardingCompleted = remember(persons) { 
+        persons.isNotEmpty() || sharedPrefs.getBoolean("onboarding_completed", false)
+    }
+    val needsOnboarding = !onboardingCompleted && persons.isEmpty()
+    
+    // Navigate to onboarding if needed
+    LaunchedEffect(needsOnboarding, currentRoute) {
+        if (needsOnboarding && currentRoute != Screen.Onboarding.route) {
+            navController.navigate(Screen.Onboarding.route) {
+                popUpTo(0) { inclusive = true }
+            }
+        }
+    }
+    
     // Check and request notification permission for Android 13+
     val notificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
     
@@ -226,9 +262,26 @@ fun FamilyLogbookApp(
     ) { paddingValues ->
         NavHost(
             navController = navController,
-            startDestination = Screen.Home.route,
+            startDestination = if (needsOnboarding) Screen.Onboarding.route else Screen.Home.route,
             modifier = Modifier.padding(paddingValues)
         ) {
+            // Onboarding screen
+            composable(Screen.Onboarding.route) {
+                OnboardingScreen(
+                    settingsViewModel = settingsViewModel,
+                    onComplete = {
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    },
+                    onSkip = {
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
+                )
+            }
+            
             // Home route with optional category and person filters
             composable(
                 route = "${Screen.Home.route}?category={category}&person={person}",

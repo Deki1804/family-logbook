@@ -6,6 +6,7 @@ sealed class Screen(val route: String) {
     object Settings : Screen("settings")
     object AddEntry : Screen("add_entry")
     object Login : Screen("login")
+    object Onboarding : Screen("onboarding")
     
     companion object {
         fun HomeWithCategory(category: String) = "home?category=$category"
