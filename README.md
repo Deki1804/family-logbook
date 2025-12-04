@@ -1,137 +1,242 @@
-# Family Logbook 👶📖
+# FamilyOS 👨‍👩‍👧‍👦📱
 
-Aplikacija za roditelje za praćenje važnih događaja o djeci i obiteljskom životu.
+> **Vaš kompletan obiteljski život manager** - praćenje zdravlja, hranjenja, spavanja, financija, automobila, kuće i još puno toga!
 
-## Phase 1 - MVP
+## 🌟 O aplikaciji
 
-Ovo je početna MVP verzija sa:
-- In-memory pohranom podataka (bez perzistencije za sada)
-- Jednostavnom klasifikacijom na temelju ključnih riječi (fake AI)
-- Osnovnim UI-om s Jetpack Compose
-- Čistom arhitekturom (ui/domain/data slojevi)
+FamilyOS (ranije Family Logbook) je sveobuhvatna Android aplikacija za upravljanje obiteljskim životom. Aplikacija omogućava roditeljima i članovima obitelji da lakše prate važne aspekte djece i obiteljskog života kroz jedinstveno sučelje.
 
-## Značajke
+**Trenutna verzija:** v0.9 (Interni beta)
 
-- **Home/Timeline**: Pregled svih unosa u feedu
-- **Add Entry**: Kreiranje novih unosa s automatskom kategorizacijom
-- **Stats**: Statistika po kategorijama i raspoloženju
-- **Settings**: Upravljanje profilima djece
+## ✨ Glavne značajke
 
-## Arhitektura
+### 👶 Praćenje djece i obitelji
+- **Zdravlje**: Temperatura, lijekovi, simptomi, podsjetnici za uzimanje lijekova
+- **Hranjenje**: Praćenje hranjenja (dojenje, bočica), timer, podsjetnici
+- **Spavanje**: Praćenje spavanja i budnosti
+- **Razvoj**: Bilježenje razvojnih prekretnica
+- **Raspoloženje**: Praćenje raspoloženja i emocija
+
+### 🏠 Upravljanje kućom i entitetima
+- **Automobili**: Servisi, kilometraža, troškovi
+- **Kuća**: Popravci, računi, održavanje
+- **Financije**: Praćenje troškova po kategorijama
+- **Pametna kuća**: Integracija s Google Assistantom za upravljanje pametnim uređajima
+
+### 📊 Statistika i pregledi
+- Grafički prikazi temperature, hranjenja, spavanja
+- Pregled troškova po kategorijama
+- Statistički pregledi po djetetu/osobi/entitetu
+
+### 🔔 Pametni podsjetnici
+- **Lijekovi**: Automatski podsjetnici prema intervalu uzimanja
+- **Hranjenje**: Podsjetnici za bebe (< 2 godine)
+- **Servisi i termini**: Podsjetnici za važne događaje
+
+### 💾 Sigurnost i backup
+- **Firebase integracija**: Svi podaci se sigurno pohranjuju u cloudu
+- **Anonimni login**: Brz start bez registracije
+- **Upgrade accounta**: Mogućnost trajne registracije s Google ili email računom
+- **Export/Import**: JSON i CSV backup/restore
+
+### 🤖 Pametna klasifikacija
+- Automatska kategorizacija unosa prema ključnim riječima
+- Detekcija raspoloženja, temperature, lijekova
+- Kontekstualni savjeti o zdravlju i prehrani (generalne preporuke, ne medicinski savjeti)
+
+## 🏗️ Arhitektura
+
+Aplikacija je izgrađena na čistoj slojevitoj arhitekturi:
 
 ```
 app/src/main/java/com/familylogbook/app/
 ├── domain/
-│   ├── classifier/          # EntryClassifier (fake AI za Phase 1)
-│   ├── model/               # Child, LogEntry, Category, Mood
+│   ├── classifier/          # EntryClassifier (rule-based AI)
+│   ├── model/               # LogEntry, Person, Entity, Category, Mood
 │   └── repository/          # LogbookRepository interface
 ├── data/
-│   └── repository/          # InMemoryLogbookRepository implementacija
+│   ├── auth/                # AuthManager (Firebase Auth)
+│   ├── repository/          # FirestoreLogbookRepository, InMemoryLogbookRepository
+│   ├── notification/        # NotificationManager, ReminderWorker
+│   ├── export/              # ExportManager (JSON/CSV)
+│   └── smarthome/           # SmartHomeManager, SmartHomeCommandParser
 └── ui/
-    ├── navigation/          # Definicije ekrana
-    ├── screen/             # Compose ekrani
-    ├── theme/              # Material3 teme
-    └── viewmodel/          # ViewModels (MVVM)
+    ├── navigation/          # Screen definicije
+    ├── screen/              # Compose ekrani
+    ├── component/           # Reusable komponente
+    ├── theme/               # Material3 teme
+    └── viewmodel/           # ViewModels (MVVM)
 ```
 
-## Tech Stack
+### Slojevi
+
+- **UI Layer**: Jetpack Compose ekrani i komponente
+- **Domain Layer**: Čisti business logika i modeli
+- **Data Layer**: Firebase Firestore, Auth, WorkManager, Export/Import
+
+### Repozitoriji
+
+- `InMemoryLogbookRepository`: Demo/offline testiranje
+- `FirestoreLogbookRepository`: Pravi user-scoped podaci (`users/{uid}/entries`, `persons`, `entities`)
+
+## 🛠️ Tech Stack
 
 - **Jezik**: Kotlin
 - **UI**: Jetpack Compose
 - **Arhitektura**: MVVM + Clean Architecture
 - **Navigacija**: Navigation Compose
-- **State Management**: StateFlow
+- **State Management**: StateFlow, MutableStateFlow
+- **Backend**: Firebase (Firestore, Auth)
+- **Background Processing**: WorkManager
+- **Notifications**: Android Notification Channels
 
-## Početak rada
-
-### Preduvjeti
+## 📱 Preduvjeti
 
 - Android Studio (Hedgehog ili noviji)
-- JDK 17
+- JDK 17+
 - Android SDK (minSdk 24, targetSdk 34)
-- Google račun (za Firebase)
+- Google račun za Firebase
 
-### Postupak
+## 🚀 Početak rada
 
-1. **Kloniraj repozitorij** (ili otvori postojeći folder u Android Studio)
-   ```bash
-   git clone <repo-url>
-   cd "Family Logbook"
-   ```
-
-2. **Postavi local.properties**
-   - Ako ne postoji `local.properties`, kopiraj `local.properties.template` u `local.properties`
-   - Postavi putanju do svog Android SDK-a:
-     ```
-     sdk.dir=C\:\\Users\\TvojeIme\\AppData\\Local\\Android\\Sdk
-     ```
-
-3. **Otvori projekt u Android Studio**
-   - File → Open → odaberi folder projekta
-   - Android Studio će automatski sinkronizirati Gradle
-
-4. **Sinkroniziraj Gradle**
-   - Klikni "Sync Now" ako se pojavi notifikacija
-   - Ili File → Sync Project with Gradle Files
-
-5. **Postavi Firebase** (opcionalno za Phase 1, potrebno za Phase 2)
-   - Detaljne upute: [FIREBASE_SETUP.md](FIREBASE_SETUP.md)
-   - Quick start: [FIREBASE_QUICK_START.md](FIREBASE_QUICK_START.md)
-
-6. **Pokreni aplikaciju**
-   - Poveži Android uređaj ili pokreni emulator
-   - Klikni Run (▶️) ili pritisni Shift+F10
-
-## Git Setup
-
-Projekt je spreman za Git:
-- ✅ `.gitignore` - konfiguriran za Android projekte
-- ✅ `.gitattributes` - postavljen za konzistentne line endings
-- ✅ `local.properties` se automatski ignorira (ne commitaj ga!)
-
-### Detaljne upute
-- **GitHub Setup**: [GITHUB_SETUP.md](GITHUB_SETUP.md) - kompletan vodič
-- **Quick Start**: [GITHUB_QUICK_START.md](GITHUB_QUICK_START.md) - brzi pregled
-- **Checklist**: [GITHUB_CHECKLIST.md](GITHUB_CHECKLIST.md) - za praćenje napretka
-
-### Brzi start
+### 1. Kloniraj repozitorij
 
 ```bash
-# Inicijaliziraj repo
-git init
-git branch -M main
-
-# Dodaj sve fajlove
-git add .
-
-# Prvi commit
-git commit -m "Initial commit: Family Logbook MVP - Phase 1"
-
-# Poveži s GitHub-om (zamijeni USERNAME i REPO_NAME)
-git remote add origin https://github.com/USERNAME/REPO_NAME.git
-git push -u origin main
+git clone <repo-url>
+cd "Family Logbook"
 ```
 
-**Napomena**: GitHub više ne koristi password autentifikaciju. Trebaš kreirati Personal Access Token. Vidi [GITHUB_SETUP.md](GITHUB_SETUP.md) za detalje.
+### 2. Otvori projekt u Android Studio
 
-## Sljedeći koraci (Future Phases)
+- File → Open → odaberi folder projekta
+- Android Studio će automatski sinkronizirati Gradle
 
-- [ ] Dodaj Firebase (Auth + Firestore)
-- [ ] Zamijeni fake classifier s pravim AI backendom
-- [ ] Dodaj priloge slika
-- [ ] Dodaj praćenje datuma rođenja
-- [ ] Dodaj export funkcionalnost
-- [ ] Dodaj podsjetnike i notifikacije
+### 3. Postavi Firebase
 
-## Napomene
+**Opcija A: Koristiš pravi Firebase projekt**
 
-- Svi podaci su in-memory i gube se pri restartu aplikacije
-- Klasifikacija koristi jednostavno prepoznavanje ključnih riječi
-- Još nema pravog AI backenda (samo Phase 1)
+1. Kreiraj Firebase projekt na [Firebase Console](https://console.firebase.google.com)
+2. Dodaj Android app u Firebase projekt
+3. Preuzmi `google-services.json` i stavi ga u `app/` folder
+4. Detaljne upute: [FIREBASE_SETUP.md](FIREBASE_SETUP.md) ili [FIREBASE_QUICK_START.md](FIREBASE_QUICK_START.md)
 
-## Verzija
+**Opcija B: Koristiš demo mode (bez Firebase)**
 
-- **Version Code**: 1
-- **Version Name**: 1.0
-- **Phase**: 1 (MVP)
+- U `MainActivity.kt` postavi `useFirestore = false`
+- Aplikacija će koristiti `InMemoryLogbookRepository` za testiranje
 
+### 4. Postavi Firestore Security Rules
+
+Kopiraj pravila iz `firestore.rules` u Firebase Console → Firestore Database → Rules.
+
+Detaljno objašnjenje: [FIRESTORE_SECURITY_RULES.md](FIRESTORE_SECURITY_RULES.md)
+
+### 5. Pokreni aplikaciju
+
+- Poveži Android uređaj ili pokreni emulator
+- Klikni Run (▶️) ili pritisni `Shift+F10`
+
+## 📚 Dokumentacija
+
+- **[PROJECT_STATUS.md](PROJECT_STATUS.md)** - Kompletan pregled projekta, roadmap, status
+- **[TODO_v1.0.md](TODO_v1.0.md)** - Konkretne akcije i checklist za v1.0
+- **[QUICK_STATUS.md](QUICK_STATUS.md)** - Brzi pregled trenutnog stanja
+- **[FIRESTORE_SECURITY_RULES.md](FIRESTORE_SECURITY_RULES.md)** - Objašnjenje sigurnosnih pravila
+- **[MIPMAP_SETUP_INSTRUCTIONS.md](MIPMAP_SETUP_INSTRUCTIONS.md)** - Upute za postavljanje ikona
+
+## 🔐 Sigurnost
+
+- Svi podaci su user-scoped u Firestore (`users/{userId}/...`)
+- Anonimni login omogućava brz start bez registracije
+- Upgrade accounta omogućava trajnu pohranu podataka
+- Firestore security rules osiguravaju da korisnici vide samo svoje podatke
+
+## 📦 Export/Import
+
+Aplikacija podržava backup i restore podataka:
+
+- **JSON Export**: Kompletan backup svih podataka
+- **CSV Export**: Pregledan export za analizu u Excel-u
+- **JSON Import**: Restore podataka sa starog uređaja
+
+Lokacija: Settings → Export & Import
+
+## 🌍 Lokalizacija
+
+- **Hrvatski jezik**: Potpuno prevedeno 🇭🇷
+- Buduće verzije će podržavati više jezika
+
+## 🎯 Trenutno stanje (v0.9)
+
+### ✅ Što radi
+
+- ✅ Firestore integracija (per-user storage)
+- ✅ Anonimni login + upgrade path
+- ✅ Background podsjetnici (lijekovi, hranjenje, servisi)
+- ✅ Export/Import (JSON + CSV)
+- ✅ Smart Home integracija
+- ✅ Potpuno na hrvatskom jeziku
+- ✅ Entity Profiles (Auto, Kuća, Financije)
+- ✅ Symptom Helper
+- ✅ Bogat domain model za sve aspekte obiteljskog života
+
+### 🔄 U razvoju
+
+- 🔄 README i Branding (trenutno)
+- 🔄 Auth & Login Flow poboljšanja
+- 🔄 Notifikacije Runtime Permission (Android 13+)
+- 🔄 Export/Import proširenje (aiAdvice, symptoms)
+
+### 📅 Planirano za v1.0
+
+- 📅 Onboarding flow
+- 📅 Today Summary na Home screen
+- 📅 UX poboljšanja
+- 📅 Error handling
+
+## 🗺️ Roadmap
+
+### v0.9 (Trenutno) - Interni Beta
+- Osnovne funkcionalnosti
+- Firebase integracija
+- Lokalizacija
+- Background processing
+
+### v0.95 (Uskoro) - Prije javnog releasea
+- README i branding
+- Auth flow poboljšanja
+- Notifikacije permission
+- Export/Import proširenje
+
+### v1.0 (Planirano) - Prva javna verzija
+- Onboarding
+- UX polish
+- Finalni testing
+- App Store / Play Store release
+
+### Post v1.0
+- Multi-language support
+- Dark mode toggle
+- Widgeti za home screen
+- Wear OS companion app
+- Sharing između obitelji
+
+## 🤝 Doprinos
+
+Projekt je trenutno u internoj beta fazi. Za pristup ili doprinos, kontaktiraj maintainera.
+
+## 📄 Licenca
+
+Privatni projekt - sva prava pridržana.
+
+## 📞 Kontakt
+
+Za pitanja, bugove ili prijedloge, otvori issue na repozitoriju.
+
+---
+
+**Napomena**: Ova aplikacija pruža generalne informacije i preporuke. Ne zamjenjuje profesionalni medicinski savjet. Za zdravstvene probleme, uvijek konzultiraj liječnika.
+
+**Version**: 0.9  
+**Phase**: 1.5 (Firebase Integration + Advanced Features)  
+**Status**: Interni Beta - Gotovo za svakodnevnu upotrebu
