@@ -2,9 +2,13 @@ package com.familylogbook.app.data.export
 
 import com.familylogbook.app.domain.model.Category
 import com.familylogbook.app.domain.model.Child
+import com.familylogbook.app.domain.model.Entity
+import com.familylogbook.app.domain.model.EntityType
 import com.familylogbook.app.domain.model.FeedingType
 import com.familylogbook.app.domain.model.LogEntry
 import com.familylogbook.app.domain.model.Mood
+import com.familylogbook.app.domain.model.Person
+import com.familylogbook.app.domain.model.PersonType
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -16,13 +20,18 @@ import java.util.*
 class ExportManager {
     
     /**
-     * Exports all data to JSON format.
+     * Exports all data to JSON format (v2.0 with Persons and Entities support).
      */
-    fun exportToJson(children: List<Child>, entries: List<LogEntry>): String {
+    fun exportToJson(
+        children: List<Child> = emptyList(),
+        persons: List<Person> = emptyList(),
+        entities: List<Entity> = emptyList(),
+        entries: List<LogEntry>
+    ): String {
         val json = JSONObject()
         json.put("exportDate", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
             .format(Date()))
-        json.put("version", "1.0")
+        json.put("version", "2.0") // Updated version for Persons/Entities support
         
         // Children array
         val childrenArray = JSONArray()
@@ -37,12 +46,40 @@ class ExportManager {
         }
         json.put("children", childrenArray)
         
+        // Persons array (v2.0)
+        val personsArray = JSONArray()
+        persons.forEach { person ->
+            val personObj = JSONObject()
+            personObj.put("id", person.id)
+            personObj.put("name", person.name)
+            personObj.put("type", person.type.name)
+            personObj.put("avatarColor", person.avatarColor)
+            personObj.put("emoji", person.emoji)
+            personsArray.put(personObj)
+        }
+        json.put("persons", personsArray)
+        
+        // Entities array (v2.0)
+        val entitiesArray = JSONArray()
+        entities.forEach { entity ->
+            val entityObj = JSONObject()
+            entityObj.put("id", entity.id)
+            entityObj.put("name", entity.name)
+            entityObj.put("type", entity.type.name)
+            entityObj.put("avatarColor", entity.avatarColor)
+            entityObj.put("emoji", entity.emoji)
+            entitiesArray.put(entityObj)
+        }
+        json.put("entities", entitiesArray)
+        
         // Entries array
         val entriesArray = JSONArray()
         entries.forEach { entry ->
             val entryObj = JSONObject()
             entryObj.put("id", entry.id)
-            entry.childId?.let { entryObj.put("childId", it) }
+            entry.childId?.let { entryObj.put("childId", it) } // Legacy support
+            entry.personId?.let { entryObj.put("personId", it) } // v2.0
+            entry.entityId?.let { entryObj.put("entityId", it) } // v2.0
             entryObj.put("timestamp", entry.timestamp)
             entryObj.put("rawText", entry.rawText)
             entryObj.put("category", entry.category.name)
@@ -53,6 +90,14 @@ class ExportManager {
             entry.medicineTimestamp?.let { entryObj.put("medicineTimestamp", it) }
             entry.feedingType?.let { entryObj.put("feedingType", it.name) }
             entry.feedingAmount?.let { entryObj.put("feedingAmount", it) }
+            entry.aiAdvice?.let { entryObj.put("aiAdvice", it) }
+            entry.symptoms?.takeIf { it.isNotEmpty() }?.let { symptomsList ->
+                val symptomsArray = JSONArray()
+                symptomsList.forEach { symptom ->
+                    symptomsArray.put(symptom)
+                }
+                entryObj.put("symptoms", symptomsArray)
+            }
             entriesArray.put(entryObj)
         }
         json.put("entries", entriesArray)
@@ -61,14 +106,21 @@ class ExportManager {
     }
     
     /**
-     * Exports entries to CSV format.
+     * Exports entries to CSV format (v2.0 with Persons and Entities support).
      */
-    fun exportToCsv(children: List<Child>, entries: List<LogEntry>): String {
+    fun exportToCsv(
+        children: List<Child> = emptyList(),
+        persons: List<Person> = emptyList(),
+        entities: List<Entity> = emptyList(),
+        entries: List<LogEntry>
+    ): String {
         val childrenMap = children.associateBy { it.id }
+        val personsMap = persons.associateBy { it.id }
+        val entitiesMap = entities.associateBy { it.id }
         
         val csv = StringBuilder()
-        // Header
-        csv.appendLine("Date,Time,Child,Category,Text,Tags,Mood,Temperature,Medicine,Feeding Type,Feeding Amount")
+        // Header (v2.0 - expanded)
+        csv.appendLine("Date,Time,Person/Child,Entity,Category,Text,Tags,Mood,Temperature,Medicine,Feeding Type,Feeding Amount,Amount,Currency,Mileage,Service Type")
         
         // Data rows
         entries.forEach { entry ->
@@ -76,13 +128,21 @@ class ExportManager {
                 .format(Date(entry.timestamp))
             val time = SimpleDateFormat("HH:mm", Locale.getDefault())
                 .format(Date(entry.timestamp))
-            val childName = entry.childId?.let { childrenMap[it]?.name } ?: "Family"
+            
+            // Person/Child name (v2.0 - supports both)
+            val personOrChildName = entry.personId?.let { personsMap[it]?.name }
+                ?: entry.childId?.let { childrenMap[it]?.name }
+                ?: "Family"
+            
+            // Entity name (v2.0)
+            val entityName = entry.entityId?.let { entitiesMap[it]?.name } ?: ""
             
             csv.appendLine(
                 listOf(
                     date,
                     time,
-                    childName,
+                    personOrChildName,
+                    entityName,
                     entry.category.name,
                     "\"${entry.rawText.replace("\"", "\"\"")}\"", // Escape quotes
                     entry.tags.joinToString(";"),
@@ -90,7 +150,11 @@ class ExportManager {
                     entry.temperature?.toString() ?: "",
                     entry.medicineGiven ?: "",
                     entry.feedingType?.name ?: "",
-                    entry.feedingAmount?.toString() ?: ""
+                    entry.feedingAmount?.toString() ?: "",
+                    entry.amount?.toString() ?: "",
+                    entry.currency ?: "",
+                    entry.mileage?.toString() ?: "",
+                    entry.serviceType ?: ""
                 ).joinToString(",")
             )
         }
@@ -99,14 +163,16 @@ class ExportManager {
     }
     
     /**
-     * Parses JSON export and returns children and entries.
-     * @return Pair of (children, entries) or null if parsing fails
+     * Parses JSON export and returns children, persons, entities, and entries.
+     * Supports both v1.0 (legacy) and v2.0 (with Persons/Entities) formats.
+     * @return Quadruple of (children, persons, entities, entries) or null if parsing fails
      */
-    fun parseJsonImport(jsonString: String): Pair<List<Child>, List<LogEntry>>? {
+    fun parseJsonImport(jsonString: String): ExportData? {
         return try {
             val json = JSONObject(jsonString)
+            val version = if (json.has("version")) json.getString("version") else "1.0"
             
-            // Parse children
+            // Parse children (legacy support)
             val childrenList = mutableListOf<Child>()
             if (json.has("children")) {
                 val childrenArray = json.getJSONArray("children")
@@ -122,6 +188,48 @@ class ExportManager {
                         emoji = childObj.getString("emoji")
                     )
                     childrenList.add(child)
+                }
+            }
+            
+            // Parse persons (v2.0)
+            val personsList = mutableListOf<Person>()
+            if (json.has("persons")) {
+                val personsArray = json.getJSONArray("persons")
+                for (i in 0 until personsArray.length()) {
+                    val personObj = personsArray.getJSONObject(i)
+                    val person = Person(
+                        id = personObj.getString("id"),
+                        name = personObj.getString("name"),
+                        type = try {
+                            PersonType.valueOf(personObj.getString("type"))
+                        } catch (e: Exception) {
+                            PersonType.CHILD // Default fallback
+                        },
+                        avatarColor = personObj.getString("avatarColor"),
+                        emoji = personObj.getString("emoji")
+                    )
+                    personsList.add(person)
+                }
+            }
+            
+            // Parse entities (v2.0)
+            val entitiesList = mutableListOf<Entity>()
+            if (json.has("entities")) {
+                val entitiesArray = json.getJSONArray("entities")
+                for (i in 0 until entitiesArray.length()) {
+                    val entityObj = entitiesArray.getJSONObject(i)
+                    val entity = Entity(
+                        id = entityObj.getString("id"),
+                        name = entityObj.getString("name"),
+                        type = try {
+                            EntityType.valueOf(entityObj.getString("type"))
+                        } catch (e: Exception) {
+                            EntityType.OTHER // Default fallback
+                        },
+                        avatarColor = entityObj.getString("avatarColor"),
+                        emoji = entityObj.getString("emoji")
+                    )
+                    entitiesList.add(entity)
                 }
             }
             
@@ -172,6 +280,12 @@ class ExportManager {
                         childId = if (entryObj.has("childId") && !entryObj.isNull("childId")) {
                             entryObj.getString("childId")
                         } else null,
+                        personId = if (entryObj.has("personId") && !entryObj.isNull("personId")) {
+                            entryObj.getString("personId")
+                        } else null,
+                        entityId = if (entryObj.has("entityId") && !entryObj.isNull("entityId")) {
+                            entryObj.getString("entityId")
+                        } else null,
                         timestamp = entryObj.getLong("timestamp"),
                         rawText = entryObj.getString("rawText"),
                         category = category,
@@ -186,20 +300,69 @@ class ExportManager {
                         medicineTimestamp = if (entryObj.has("medicineTimestamp") && !entryObj.isNull("medicineTimestamp")) {
                             entryObj.getLong("medicineTimestamp")
                         } else null,
+                        medicineIntervalHours = if (entryObj.has("medicineIntervalHours") && !entryObj.isNull("medicineIntervalHours")) {
+                            entryObj.getInt("medicineIntervalHours")
+                        } else null,
+                        nextMedicineTime = if (entryObj.has("nextMedicineTime") && !entryObj.isNull("nextMedicineTime")) {
+                            entryObj.getLong("nextMedicineTime")
+                        } else null,
                         feedingType = feedingType,
                         feedingAmount = if (entryObj.has("feedingAmount") && !entryObj.isNull("feedingAmount")) {
                             entryObj.getInt("feedingAmount")
+                        } else null,
+                        amount = if (entryObj.has("amount") && !entryObj.isNull("amount")) {
+                            entryObj.getDouble("amount")
+                        } else null,
+                        currency = if (entryObj.has("currency") && !entryObj.isNull("currency")) {
+                            entryObj.getString("currency")
+                        } else null,
+                        mileage = if (entryObj.has("mileage") && !entryObj.isNull("mileage")) {
+                            entryObj.getInt("mileage")
+                        } else null,
+                        serviceType = if (entryObj.has("serviceType") && !entryObj.isNull("serviceType")) {
+                            entryObj.getString("serviceType")
+                        } else null,
+                        reminderDate = if (entryObj.has("reminderDate") && !entryObj.isNull("reminderDate")) {
+                            entryObj.getLong("reminderDate")
+                        } else null,
+                        aiAdvice = if (entryObj.has("aiAdvice") && !entryObj.isNull("aiAdvice")) {
+                            entryObj.getString("aiAdvice")
+                        } else null,
+                        symptoms = if (entryObj.has("symptoms") && !entryObj.isNull("symptoms")) {
+                            val symptomsArray = entryObj.getJSONArray("symptoms")
+                            (0 until symptomsArray.length()).mapNotNull { 
+                                try {
+                                    symptomsArray.getString(it)
+                                } catch (e: Exception) {
+                                    null
+                                }
+                            }
                         } else null
                     )
                     entriesList.add(entry)
                 }
             }
             
-            Pair(childrenList, entriesList)
+            ExportData(
+                children = childrenList,
+                persons = personsList,
+                entities = entitiesList,
+                entries = entriesList
+            )
         } catch (e: Exception) {
             e.printStackTrace()
             null
         }
     }
+    
+    /**
+     * Data class for export/import data structure.
+     */
+    data class ExportData(
+        val children: List<Child>,
+        val persons: List<Person>,
+        val entities: List<Entity>,
+        val entries: List<LogEntry>
+    )
 }
 
