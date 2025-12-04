@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -82,6 +83,8 @@ fun AddEntryScreen(
     val selectedFeedingType by viewModel.selectedFeedingType.collectAsState()
     val bottleAmount by viewModel.bottleAmount.collectAsState()
     val selectedSymptoms by viewModel.selectedSymptoms.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val errorMessage by viewModel.errorMessage.collectAsState()
     val scope = rememberCoroutineScope()
     
     val isEditMode = editingEntryId != null || entryId != null
@@ -109,13 +112,18 @@ fun AddEntryScreen(
                                 if (viewModel.saveEntry()) {
                                     onNavigateBack()
                                 }
-                                // If save fails, entry text validation will prevent saving
-                                // In production, show snackbar with error message
                             }
                         },
-                        enabled = entryText.trim().isNotEmpty()
+                        enabled = entryText.trim().isNotEmpty() && !isLoading
                     ) {
-                        Text("Spremi", fontWeight = FontWeight.Bold)
+                        if (isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Text("Spremi", fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             )
@@ -404,6 +412,59 @@ fun AddEntryScreen(
                     // For now, we'll rely on automatic extraction from text
                 }
             )
+            
+            // Error message
+            errorMessage?.let { error ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                    ),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "⚠️ Greška",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        Text(
+                            text = error,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(
+                                onClick = { viewModel.clearError() }
+                            ) {
+                                Text("U redu")
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        viewModel.clearError()
+                                        if (viewModel.saveEntry()) {
+                                            onNavigateBack()
+                                        }
+                                    }
+                                }
+                            ) {
+                                Text("Pokušaj ponovo")
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
