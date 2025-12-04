@@ -278,14 +278,6 @@ fun HomeScreen(
                     }
                 }
 
-                // Finance Summary Card (conditionally displayed)
-                if (selectedCategory == Category.FINANCE && entries.isNotEmpty()) {
-                    val financeEntries = entries.filter { it.category == Category.FINANCE }
-                    if (financeEntries.isNotEmpty()) {
-                        FinanceSummaryCard(financeEntries = financeEntries)
-                    }
-                }
-
                 // Group entries by day
                 val groupedEntries = remember(entries) {
                     entries.groupBy { getDayGroup(it.timestamp) }
@@ -300,6 +292,23 @@ fun HomeScreen(
                         }
                 }
                 
+                // Calculate today entries and finance entries outside LazyColumn
+                val todayEntries = remember(entries, activeFilterCount) {
+                    if (activeFilterCount == 0) {
+                        entries.filter { getDayGroup(it.timestamp) == DayGroup.TODAY }
+                    } else {
+                        emptyList()
+                    }
+                }
+                
+                val financeEntries = remember(entries, selectedCategory) {
+                    if (selectedCategory == Category.FINANCE && entries.isNotEmpty()) {
+                        entries.filter { it.category == Category.FINANCE }
+                    } else {
+                        emptyList()
+                    }
+                }
+                
                 // Entries list with grouping
                 LazyColumn(
                     state = lazyListState,
@@ -309,6 +318,19 @@ fun HomeScreen(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    // Today Summary Card (only show if no filters are active)
+                    if (todayEntries.isNotEmpty()) {
+                        item(key = "today_summary") {
+                            TodaySummaryCard(entries = todayEntries)
+                        }
+                    }
+                    
+                    // Finance Summary Card (conditionally displayed)
+                    if (financeEntries.isNotEmpty()) {
+                        item(key = "finance_summary") {
+                            FinanceSummaryCard(financeEntries = financeEntries)
+                        }
+                    }
                     groupedEntries.forEach { entryGroup ->
                         // Group header
                         item(key = "header_${entryGroup.group}") {
@@ -830,6 +852,201 @@ fun SearchBar(
         singleLine = true,
         shape = RoundedCornerShape(12.dp)
     )
+}
+
+@Composable
+fun TodaySummaryCard(entries: List<LogEntry>) {
+    if (entries.isEmpty()) return
+    
+    // Calculate statistics (entries are already filtered to today)
+    val sleepEntries = entries.filter { it.category == Category.SLEEP }
+    val feedingEntries = entries.filter { it.category == Category.FEEDING }
+    val temperatureEntries = entries.filter { it.temperature != null }
+    
+    // Calculate sleep hours (try to extract from text or estimate)
+    val sleepHours = remember(sleepEntries) {
+        var totalHours = 0.0
+        sleepEntries.forEach { entry ->
+            // Try to extract sleep duration from text
+            val text = entry.rawText.lowercase()
+            
+            // Patterns like "spavao 8 sati", "spavali 7h", "slept 6 hours"
+            val hourPatterns = listOf(
+                Regex("""(?:spava|spav|slept).*?(\d+(?:\.\d+)?)\s*(?:sati|h|hours|hour)""", RegexOption.IGNORE_CASE),
+                Regex("""(\d+(?:\.\d+)?)\s*(?:sati|h|hours|hour).*?(?:spava|sleep)""", RegexOption.IGNORE_CASE),
+            )
+            
+            var found = false
+            for (pattern in hourPatterns) {
+                val match = pattern.find(text)
+                if (match != null) {
+                    val hours = match.groupValues[1].toDoubleOrNull()
+                    if (hours != null && hours > 0 && hours <= 24) {
+                        totalHours += hours
+                        found = true
+                        break
+                    }
+                }
+            }
+            
+            // If no explicit duration found, try to estimate from nap patterns
+            if (!found) {
+                if (text.contains("dnevni san") || text.contains("nap")) {
+                    totalHours += 1.5 // Typical nap duration
+                } else if (text.contains("noćni san") || text.contains("noć")) {
+                    totalHours += 8.0 // Typical night sleep
+                }
+            }
+        }
+        
+        if (totalHours > 0) {
+            String.format("%.1f", totalHours)
+        } else if (sleepEntries.isNotEmpty()) {
+            "${sleepEntries.size}x" // Just show count if can't calculate hours
+        } else {
+            null
+        }
+    }
+    
+    // Calculate total feeding amount (bottle)
+    val totalFeedingAmount = feedingEntries
+        .filter { it.feedingAmount != null }
+        .sumOf { it.feedingAmount ?: 0 }
+    
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "📊 Današnji pregled",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Text(
+                    text = "${entries.size} zapisa",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                )
+            }
+            
+            // Statistics row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                // Sleep
+                if (sleepEntries.isNotEmpty()) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "😴",
+                            fontSize = 24.sp
+                        )
+                        Text(
+                            text = "Spavanje",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                        )
+                        Text(
+                            text = sleepHours ?: "${sleepEntries.size}x",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        if (sleepHours != null) {
+                            Text(
+                                text = "sati",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
+                            )
+                        }
+                    }
+                }
+                
+                // Feeding
+                if (feedingEntries.isNotEmpty()) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "🍼",
+                            fontSize = 24.sp
+                        )
+                        Text(
+                            text = "Hranjenja",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                        )
+                        Text(
+                            text = "${feedingEntries.size}",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        if (totalFeedingAmount > 0) {
+                            Text(
+                                text = "${totalFeedingAmount}ml",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
+                            )
+                        }
+                    }
+                }
+                
+                // Temperature
+                if (temperatureEntries.isNotEmpty()) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "🌡️",
+                            fontSize = 24.sp
+                        )
+                        Text(
+                            text = "Temperature",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                        )
+                        Text(
+                            text = "${temperatureEntries.size}",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        temperatureEntries.firstOrNull()?.temperature?.let { temp ->
+                            Text(
+                                text = String.format("%.1f°C", temp),
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
