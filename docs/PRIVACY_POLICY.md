@@ -103,7 +103,7 @@ Ako unosiš podatke o djeci:
 
 Za pitanja o privatnosti ili zahtjeva za brisanje podataka, kontaktiraj nas:
 
-- **Email**: [Tvoj email ovdje]
+- **Email**: LarryDJ@gmail.com
 - **GitHub**: [Link na repo ako imaš]
 
 ## 📝 Izmjene

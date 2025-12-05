@@ -136,7 +136,7 @@ Ako želiš:
 - Podnijeti prigovor
 - Postaviti pitanje o GDPR-u
 
-**Kontakt**: [Tvoj email ovdje]
+**Kontakt**: LarryDJ@gmail.com
 
 **Rok za odgovor**: Do 30 dana (prema GDPR-u)
 

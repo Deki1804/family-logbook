@@ -95,7 +95,7 @@ Zabranjeno je:
 
 Za pitanja o Uvjetima korištenja:
 
-- **Email**: [Tvoj email ovdje]
+- **Email**: LarryDJ@gmail.com
 - **GitHub**: [Link na repo ako imaš]
 
 ## ⚖️ Rješavanje Sporova
