@@ -12,8 +12,8 @@ android {
         applicationId = "com.familylogbook.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 100  // Beta 1.0
+        versionName = "1.0.0-beta.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -66,6 +66,8 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.foundation:foundation-layout")
 
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.7.5")
@@ -76,6 +78,9 @@ dependencies {
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    
+    // WorkManager for background tasks and notifications
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
 
     // Firebase BOM (Bill of Materials) - upravlja verzijama
     implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
