@@ -1,7 +1,9 @@
 package com.familylogbook.app.ui.screen
 
 import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -15,6 +17,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,7 +27,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.familylogbook.app.data.auth.AuthManager
@@ -41,12 +47,26 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     authManager: AuthManager? = null,
-    onNavigateToLogin: () -> Unit = {}
+    onNavigateToLogin: () -> Unit = {},
+    onNavigateToAddEntryForEntity: (String, com.familylogbook.app.domain.model.Category) -> Unit = { _, _ -> }
 ) {
     val children by viewModel.children.collectAsState()
     val newChildName by viewModel.newChildName.collectAsState()
     val newChildEmoji by viewModel.newChildEmoji.collectAsState()
     val scope = rememberCoroutineScope()
+    
+    // Dialogs state
+    var showSignOutDialog by remember { mutableStateOf(false) }
+    var showDeleteAccountDialog by remember { mutableStateOf(false) }
+    var showDeleteAccountConfirmDialog by remember { mutableStateOf(false) }
+    var showChangePasswordDialog by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
+    
+    // Change password state
+    var currentPassword by remember { mutableStateOf("") }
+    var newPassword by remember { mutableStateOf("") }
+    var confirmNewPassword by remember { mutableStateOf("") }
     
     LazyColumn(
         modifier = Modifier
@@ -56,7 +76,7 @@ fun SettingsScreen(
     ) {
         item {
             Text(
-                text = "Settings",
+                text = "Postavke",
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -67,7 +87,10 @@ fun SettingsScreen(
             authManager?.let { auth ->
                 AccountInfoCard(
                     authManager = auth,
-                    onUpgradeClick = onNavigateToLogin
+                    onUpgradeClick = onNavigateToLogin,
+                    onSignOut = { showSignOutDialog = true },
+                    onDeleteAccount = { showDeleteAccountDialog = true },
+                    onChangePassword = { showChangePasswordDialog = true }
                 )
             }
         }
@@ -78,7 +101,10 @@ fun SettingsScreen(
         item {
             FamilySection(
                 viewModel = viewModel,
-                scope = scope
+                scope = scope,
+                onEntityQuickAction = { entity, category ->
+                    onNavigateToAddEntryForEntity(entity.id, category)
+                }
             )
         }
         
@@ -87,7 +113,7 @@ fun SettingsScreen(
         // Children Section (legacy)
         item {
             Text(
-                text = "Children (Legacy)",
+                text = "Djeca (Zastarjelo)",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.SemiBold
             )
@@ -107,7 +133,7 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "Add Child",
+                    text = "Dodaj dijete",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -116,13 +142,13 @@ fun SettingsScreen(
                     value = newChildName,
                     onValueChange = { viewModel.setNewChildName(it) },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Child Name") },
-                    placeholder = { Text("Enter child's name") }
+                    label = { Text("Ime djeteta") },
+                    placeholder = { Text("Unesi ime djeteta") }
                 )
                 
                 // Emoji picker (simplified - just a few options)
                 Text(
-                    text = "Choose Emoji",
+                    text = "Odaberi emoji",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium
                 )
@@ -170,7 +196,7 @@ fun SettingsScreen(
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Add Child")
+                    Text("Dodaj dijete")
                 }
             }
         }
@@ -179,7 +205,7 @@ fun SettingsScreen(
         // Children list
         item {
             Text(
-                text = "Children",
+                text = "Djeca",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.SemiBold
             )
@@ -188,7 +214,7 @@ fun SettingsScreen(
         if (children.isEmpty()) {
             item {
                 Text(
-                    text = "No children added yet",
+                    text = "Još nema dodane djece",
                     fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     modifier = Modifier.padding(vertical = 16.dp)
@@ -227,6 +253,7 @@ fun SettingsScreen(
         item {
             AdvancedSection(
                 viewModel = viewModel,
+                authManager = authManager,
                 scope = scope
             )
         }
@@ -236,6 +263,302 @@ fun SettingsScreen(
         // About Section
         item {
             AboutSection()
+        }
+    }
+    
+    // Sign Out Dialog
+    if (showSignOutDialog) {
+        AlertDialog(
+            onDismissRequest = { showSignOutDialog = false },
+            title = { Text("Odjavi se") },
+            text = { 
+                Text("Jesi li siguran da želiš odjaviti se? Možeš se ponovno prijaviti kasnije.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            try {
+                                isLoading = true
+                                errorMessage = null
+                                authManager?.signOut()
+                                showSignOutDialog = false
+                                // After sign out, app will automatically sign in anonymously
+                                // or redirect to login screen
+                            } catch (e: Exception) {
+                                errorMessage = com.familylogbook.app.ui.util.ErrorHandler.getFriendlyErrorMessage(e)
+                            } finally {
+                                isLoading = false
+                            }
+                        }
+                    }
+                ) {
+                    Text("Odjavi se")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSignOutDialog = false }) {
+                    Text("Odustani")
+                }
+            }
+        )
+    }
+    
+    // Delete Account Dialog (first confirmation)
+    if (showDeleteAccountDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteAccountDialog = false },
+            title = { Text("Obriši račun") },
+            text = { 
+                Column {
+                    Text("Jesi li siguran da želiš obrisati svoj račun?")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Ovo će trajno obrisati:",
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text("• Tvoj Firebase račun")
+                    Text("• Sve tvoje podatke (osobe, entitete, zapise)")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Ova akcija se NE MOŽE poništiti!",
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteAccountDialog = false
+                        showDeleteAccountConfirmDialog = true
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Nastavi")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteAccountDialog = false }) {
+                    Text("Odustani")
+                }
+            }
+        )
+    }
+    
+    // Delete Account Dialog (final confirmation)
+    if (showDeleteAccountConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteAccountConfirmDialog = false },
+            title = { Text("Posljednja potvrda") },
+            text = { 
+                Column {
+                    Text(
+                        text = "Jesi li STVARNO siguran?",
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Nakon brisanja računa, nećeš moći:")
+                    Text("• Pristupiti svojim podacima")
+                    Text("• Vratiti svoje podatke")
+                    Text("• Koristiti isti račun")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Preporučujemo da prvo izvezeš svoje podatke (Settings → Export).")
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            try {
+                                isLoading = true
+                                errorMessage = null
+                                
+                                // First delete all data
+                                val userId = authManager?.getCurrentUserId()
+                                if (userId != null) {
+                                    viewModel.resetAllData(userId = userId, reseedSample = false)
+                                }
+                                
+                                // Then delete Firebase account
+                                authManager?.deleteAccount()
+                                
+                                showDeleteAccountConfirmDialog = false
+                                // After account deletion, app will create new anonymous account
+                            } catch (e: Exception) {
+                                errorMessage = com.familylogbook.app.ui.util.ErrorHandler.getFriendlyErrorMessage(e)
+                                showDeleteAccountConfirmDialog = false
+                            } finally {
+                                isLoading = false
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("DA, OBRISI RAČUN")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteAccountConfirmDialog = false }) {
+                    Text("Odustani")
+                }
+            }
+        )
+    }
+    
+    // Change Password Dialog
+    if (showChangePasswordDialog) {
+        AlertDialog(
+            onDismissRequest = { 
+                showChangePasswordDialog = false
+                currentPassword = ""
+                newPassword = ""
+                confirmNewPassword = ""
+                errorMessage = null
+            },
+            title = { Text("Promijeni lozinku") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    errorMessage?.let { error ->
+                        Text(
+                            text = error,
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 12.sp
+                        )
+                    }
+                    
+                    OutlinedTextField(
+                        value = currentPassword,
+                        onValueChange = { 
+                            currentPassword = it
+                            errorMessage = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Trenutna lozinka") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Password
+                        ),
+                        enabled = !isLoading
+                    )
+                    
+                    OutlinedTextField(
+                        value = newPassword,
+                        onValueChange = { 
+                            newPassword = it
+                            errorMessage = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Nova lozinka") },
+                        placeholder = { Text("Najmanje 6 znakova") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Password
+                        ),
+                        enabled = !isLoading
+                    )
+                    
+                    OutlinedTextField(
+                        value = confirmNewPassword,
+                        onValueChange = { 
+                            confirmNewPassword = it
+                            errorMessage = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Potvrdi novu lozinku") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Password
+                        ),
+                        enabled = !isLoading
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            try {
+                                isLoading = true
+                                errorMessage = null
+                                
+                                // Validation
+                                if (currentPassword.isBlank()) {
+                                    errorMessage = "Molimo unesi trenutnu lozinku"
+                                    isLoading = false
+                                    return@launch
+                                }
+                                if (newPassword.length < 6) {
+                                    errorMessage = "Nova lozinka mora imati najmanje 6 znakova"
+                                    isLoading = false
+                                    return@launch
+                                }
+                                if (newPassword != confirmNewPassword) {
+                                    errorMessage = "Nove lozinke se ne podudaraju"
+                                    isLoading = false
+                                    return@launch
+                                }
+                                
+                                // Change password
+                                authManager?.changePassword(currentPassword, newPassword)
+                                
+                                // Success - close dialog
+                                showChangePasswordDialog = false
+                                currentPassword = ""
+                                newPassword = ""
+                                confirmNewPassword = ""
+                                errorMessage = "Lozinka je uspješno promijenjena!"
+                            } catch (e: Exception) {
+                                errorMessage = com.familylogbook.app.ui.util.ErrorHandler.getFriendlyErrorMessage(e)
+                            } finally {
+                                isLoading = false
+                            }
+                        }
+                    },
+                    enabled = !isLoading && currentPassword.isNotBlank() && newPassword.isNotBlank() && confirmNewPassword.isNotBlank()
+                ) {
+                    Text("Promijeni")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { 
+                        showChangePasswordDialog = false
+                        currentPassword = ""
+                        newPassword = ""
+                        confirmNewPassword = ""
+                        errorMessage = null
+                    }
+                ) {
+                    Text("Odustani")
+                }
+            }
+        )
+    }
+    
+    // Error message
+    errorMessage?.let { message ->
+        LaunchedEffect(message) {
+            kotlinx.coroutines.delay(5000)
+            errorMessage = null
+        }
+        Snackbar(
+            modifier = Modifier.padding(16.dp),
+            action = {
+                TextButton(onClick = { errorMessage = null }) {
+                    Text("U redu")
+                }
+            }
+        ) {
+            Text(message)
         }
     }
 }
@@ -281,7 +604,7 @@ fun ChildListItem(
                     )
                     child.dateOfBirth?.let {
                         Text(
-                            text = "Birthday: ${java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault()).format(java.util.Date(it))}",
+                            text = "Rođendan: ${java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.getDefault()).format(java.util.Date(it))}",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
@@ -292,7 +615,7 @@ fun ChildListItem(
             IconButton(onClick = onDelete) {
                 Icon(
                     Icons.Default.Delete,
-                    contentDescription = "Delete",
+                    contentDescription = "Obriši",
                     tint = MaterialTheme.colorScheme.error
                 )
             }
@@ -303,7 +626,8 @@ fun ChildListItem(
 @Composable
 fun FamilySection(
     viewModel: SettingsViewModel,
-    scope: CoroutineScope
+    scope: CoroutineScope,
+    onEntityQuickAction: (Entity, com.familylogbook.app.domain.model.Category) -> Unit = { _, _ -> }
 ) {
     val persons by viewModel.persons.collectAsState()
     val entities by viewModel.entities.collectAsState()
@@ -320,7 +644,7 @@ fun FamilySection(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            text = "Family",
+                text = "Obitelj",
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold
         )
@@ -332,7 +656,7 @@ fun FamilySection(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "People",
+                text = "Osobe",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Medium
             )
@@ -342,7 +666,7 @@ fun FamilySection(
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Add Person", fontSize = 12.sp)
+                Text("Dodaj osobu", fontSize = 12.sp)
             }
         }
         
@@ -364,12 +688,12 @@ fun FamilySection(
                         value = newPersonName,
                         onValueChange = { viewModel.setNewPersonName(it) },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Name") },
-                        placeholder = { Text("Enter name") }
+                        label = { Text("Ime") },
+                        placeholder = { Text("Unesi ime") }
                     )
                     
                     // Person type selector
-                    Text("Type", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text("Tip", fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()
@@ -426,7 +750,7 @@ fun FamilySection(
                         modifier = Modifier.fillMaxWidth(),
                         enabled = newPersonName.trim().isNotEmpty()
                     ) {
-                        Text("Add Person")
+                        Text("Dodaj osobu")
                     }
                 }
             }
@@ -435,7 +759,7 @@ fun FamilySection(
         // Persons list
         if (persons.isEmpty()) {
             Text(
-                text = "No people added yet",
+                text = "Još nema dodanih osoba",
                 fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
             )
@@ -500,7 +824,7 @@ fun FamilySection(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Entities",
+                text = "Entiteti",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Medium
             )
@@ -510,7 +834,7 @@ fun FamilySection(
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Add Entity", fontSize = 12.sp)
+                Text("Dodaj entitet", fontSize = 12.sp)
             }
         }
         
@@ -532,12 +856,12 @@ fun FamilySection(
                         value = newEntityName,
                         onValueChange = { viewModel.setNewEntityName(it) },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Name") },
-                        placeholder = { Text("e.g., Auto, Kuća, Financije") }
+                        label = { Text("Ime") },
+                        placeholder = { Text("npr. Auto, Kuća, Financije") }
                     )
                     
                     // Entity type selector
-                    Text("Type", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text("Tip", fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()
@@ -594,7 +918,7 @@ fun FamilySection(
                         modifier = Modifier.fillMaxWidth(),
                         enabled = newEntityName.trim().isNotEmpty()
                     ) {
-                        Text("Add Entity")
+                        Text("Dodaj entitet")
                     }
                 }
             }
@@ -603,7 +927,7 @@ fun FamilySection(
         // Entities list
         if (entities.isEmpty()) {
             Text(
-                text = "No entities added yet",
+                text = "Još nema dodanih entiteta",
                 fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
             )
@@ -619,7 +943,13 @@ fun FamilySection(
                 EntityListItem(
                     entity = entity,
                     entryCount = entryCount,
-                    onDelete = { showDeleteDialog = true }
+                    onDelete = { showDeleteDialog = true },
+                    onAddService = if (entity.type == EntityType.CAR) {
+                        { onEntityQuickAction(entity, com.familylogbook.app.domain.model.Category.AUTO) }
+                    } else null,
+                    onAddExpense = if (entity.type == EntityType.CAR || entity.type == EntityType.HOUSE || entity.type == EntityType.FINANCE) {
+                        { onEntityQuickAction(entity, com.familylogbook.app.domain.model.Category.FINANCE) }
+                    } else null
                 )
                 
                 if (showDeleteDialog) {
@@ -710,7 +1040,7 @@ fun PersonListItem(
             IconButton(onClick = onDelete) {
                 Icon(
                     Icons.Default.Delete,
-                    contentDescription = "Delete",
+                    contentDescription = "Obriši",
                     tint = MaterialTheme.colorScheme.error
                 )
             }
@@ -722,7 +1052,9 @@ fun PersonListItem(
 fun EntityListItem(
     entity: Entity,
     entryCount: Int = 0,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onAddService: (() -> Unit)? = null,
+    onAddExpense: (() -> Unit)? = null
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -766,12 +1098,27 @@ fun EntityListItem(
                 }
             }
             
-            IconButton(onClick = onDelete) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = "Delete",
-                    tint = MaterialTheme.colorScheme.error
-                )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (onAddService != null) {
+                    TextButton(onClick = onAddService) {
+                        Text("Dodaj servis", fontSize = 12.sp)
+                    }
+                }
+                if (onAddExpense != null) {
+                    TextButton(onClick = onAddExpense) {
+                        Text("Dodaj trošak", fontSize = 12.sp)
+                    }
+                }
+                IconButton(onClick = onDelete) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "Obriši",
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
             }
         }
     }
@@ -787,7 +1134,7 @@ fun AppSettingsSection() {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            text = "App Settings",
+                text = "Postavke aplikacije",
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold
         )
@@ -806,7 +1153,7 @@ fun AppSettingsSection() {
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "Notifications",
+                    text = "Obavijesti",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium
                 )
@@ -816,7 +1163,7 @@ fun AppSettingsSection() {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Enable notifications", fontSize = 14.sp)
+                    Text("Omogući obavijesti", fontSize = 14.sp)
                     Switch(
                         checked = notificationsEnabled,
                         onCheckedChange = { notificationsEnabled = it }
@@ -829,7 +1176,7 @@ fun AppSettingsSection() {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Feeding reminders", fontSize = 14.sp)
+                        Text("Podsjetnici za hranjenje", fontSize = 14.sp)
                         Switch(
                             checked = feedingRemindersEnabled,
                             onCheckedChange = { feedingRemindersEnabled = it }
@@ -841,7 +1188,7 @@ fun AppSettingsSection() {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Medicine reminders", fontSize = 14.sp)
+                        Text("Podsjetnici za lijekove", fontSize = 14.sp)
                         Switch(
                             checked = medicineRemindersEnabled,
                             onCheckedChange = { medicineRemindersEnabled = it }
@@ -864,16 +1211,16 @@ fun AppSettingsSection() {
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(
-                    text = "Theme",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    text = "Theme settings coming soon",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                )
+                    Text(
+                        text = "Tema",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = "Postavke teme uskoro",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
             }
         }
         
@@ -890,16 +1237,16 @@ fun AppSettingsSection() {
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(
-                    text = "Language",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    text = "Language settings coming soon",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                )
+                    Text(
+                        text = "Jezik",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = "Postavke jezika uskoro",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
             }
         }
     }
@@ -908,6 +1255,7 @@ fun AppSettingsSection() {
 @Composable
 fun AdvancedSection(
     viewModel: SettingsViewModel,
+    authManager: com.familylogbook.app.data.auth.AuthManager?,
     scope: CoroutineScope
 ) {
     var showResetDialog by remember { mutableStateOf(false) }
@@ -935,13 +1283,13 @@ fun AdvancedSection(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "Reset podataka",
+                    text = "Upravljanje podacima",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.error
                 )
                 Text(
-                    text = "Ovo će obrisati sve tvoje podatke (osobe, entitete, zapise). Ovu akciju nije moguće poništiti.",
+                    text = "Oprez: Ove akcije će obrisati sve tvoje podatke (osobe, entitete, zapise). Ovu akciju nije moguće poništiti.",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
@@ -952,22 +1300,22 @@ fun AdvancedSection(
                 ) {
                     Button(
                         onClick = { showResetDialog = true },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.error
                         )
                     ) {
-                        Text("Obriši sve")
+                        Text("Obriši sve moje podatke")
                     }
                     
                     Button(
                         onClick = { showResetWithSampleDialog = true },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.errorContainer
                         )
                     ) {
-                        Text("Reset + Sample")
+                        Text("Obriši sve i postavi demo primjer")
                     }
                 }
             }
@@ -978,15 +1326,16 @@ fun AdvancedSection(
     if (showResetDialog) {
         AlertDialog(
             onDismissRequest = { showResetDialog = false },
-            title = { Text("Obriši sve podatke") },
+            title = { Text("Obriši sve moje podatke") },
             text = { 
-                Text("Ovo će obrisati sve tvoje podatke (osobe, entitete, zapise). Ovu akciju nije moguće poništiti. Želiš li nastaviti?")
+                Text("Ovo će obrisati SVE tvoje podatke (osobe, entitete, zapise). Ova akcija se ne može poništiti.")
             },
             confirmButton = {
                 TextButton(
                     onClick = {
                         scope.launch {
-                            viewModel.resetAllData(reseedSample = false)
+                            val userId = authManager?.getCurrentUserId()
+                            viewModel.resetAllData(userId = userId, reseedSample = false)
                             showResetDialog = false
                         }
                     }
@@ -1006,20 +1355,25 @@ fun AdvancedSection(
     if (showResetWithSampleDialog) {
         AlertDialog(
             onDismissRequest = { showResetWithSampleDialog = false },
-            title = { Text("Reset i učitaj sample podatke") },
+            title = { Text("Obriši sve i postavi demo primjer") },
             text = { 
-                Text("Ovo će obrisati sve tvoje podatke i učitati demo podatke (Neo, auto, itd.). Ovu akciju nije moguće poništiti. Želiš li nastaviti?")
+                Text("Ovo će obrisati SVE tvoje podatke i učitati demo primjer (Neo, Luna, Auto, Kuća, itd.). Ova akcija se ne može poništiti.")
             },
             confirmButton = {
                 TextButton(
                     onClick = {
                         scope.launch {
-                            viewModel.resetAllData(reseedSample = true)
+                            val userId = authManager?.getCurrentUserId()
+                            if (userId != null) {
+                                viewModel.resetAllData(userId = userId, reseedSample = true)
+                            } else {
+                                android.util.Log.e("SettingsScreen", "Cannot reset with sample data: userId is null")
+                            }
                             showResetWithSampleDialog = false
                         }
                     }
                 ) {
-                    Text("Reset + Sample", color = MaterialTheme.colorScheme.error)
+                    Text("Obriši i učitaj", color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
@@ -1036,11 +1390,11 @@ fun AboutSection() {
     Column(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            text = "About",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.SemiBold
-        )
+            Text(
+                text = "O aplikaciji",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold
+            )
         
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -1055,7 +1409,7 @@ fun AboutSection() {
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "Family Logbook",
+                    text = "FamilyOS",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -1065,7 +1419,7 @@ fun AboutSection() {
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
                 Text(
-                    text = "Your complete family life manager",
+                    text = "Vaš kompletan upravitelj obiteljskog života",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
@@ -1085,12 +1439,44 @@ fun AboutSection() {
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "Privacy",
+                    text = "Pravni dokumenti",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium
                 )
+                
+                val context = LocalContext.current
+                
+                // Privacy Policy link
                 Text(
-                    text = "Your data is stored securely and privately. We never share your information.",
+                    text = "📄 Pravila privatnosti",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.clickable {
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            data = Uri.parse("https://deki1804.github.io/family-logbook/PRIVACY_POLICY.html")
+                        }
+                        context.startActivity(intent)
+                    }
+                )
+                
+                // Terms of Service link
+                Text(
+                    text = "📋 Uvjeti korištenja",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.clickable {
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            data = Uri.parse("https://github.com/Deki1804/family-logbook/blob/main/TERMS_OF_SERVICE.md")
+                        }
+                        context.startActivity(intent)
+                    }
+                )
+                
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Vaši podaci su sigurno i privatno pohranjeni. Nikada ne dijelimo vaše informacije.",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
@@ -1110,12 +1496,30 @@ fun AboutSection() {
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "Contact",
+                    text = "Kontakt",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium
                 )
+                
+                val context = LocalContext.current
+                
                 Text(
-                    text = "For support or feedback, please contact us through the app store.",
+                    text = "📧 LarryDJ@gmail.com",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.clickable {
+                        val intent = Intent(Intent.ACTION_SENDTO).apply {
+                            data = Uri.parse("mailto:LarryDJ@gmail.com")
+                        }
+                        if (intent.resolveActivity(context.packageManager) != null) {
+                            context.startActivity(intent)
+                        }
+                    }
+                )
+                
+                Text(
+                    text = "Za podršku ili povratne informacije, kontaktirajte nas.",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )

@@ -16,6 +16,14 @@ class AdviceEngine {
      * Returns null if no relevant advice is found.
      */
     fun findAdvice(text: String, category: Category): AdviceTemplate? {
+        return findAdvice(text, category, null)
+    }
+    
+    /**
+     * Finds relevant advice for a log entry based on its text, category, and symptoms.
+     * Returns null if no relevant advice is found.
+     */
+    fun findAdvice(text: String, category: Category, symptoms: List<String>?): AdviceTemplate? {
         val lowerText = text.lowercase()
         
         // Check each template's keywords
@@ -27,7 +35,7 @@ class AdviceEngine {
         
         // Category-based fallback
         return when (category) {
-            Category.HEALTH -> findHealthAdvice(lowerText)
+            Category.HEALTH -> findHealthAdvice(lowerText, symptoms)
             Category.FEEDING -> findFeedingAdvice(lowerText)
             Category.SLEEP -> findSleepAdvice(lowerText)
             Category.MOOD -> findMoodAdvice(lowerText)
@@ -41,7 +49,22 @@ class AdviceEngine {
         }
     }
     
-    private fun findHealthAdvice(text: String): AdviceTemplate? {
+    private fun findHealthAdvice(text: String, symptoms: List<String>? = null): AdviceTemplate? {
+        // Check symptoms first (if provided) - use symptom-based matching
+        symptoms?.forEach { symptom ->
+            val lowerSymptom = symptom.lowercase()
+            when {
+                lowerSymptom.contains("temperatur") || lowerSymptom.contains("temperatura") -> 
+                    return adviceTemplates.find { it.id == "fever" }
+                lowerSymptom.contains("grč") || lowerSymptom.contains("grčevi") || lowerSymptom.contains("bol u trbuhu") -> 
+                    return adviceTemplates.find { it.id == "colic" }
+                // For other symptoms, return general health advice (fever template works as general health)
+                lowerSymptom.isNotEmpty() -> 
+                    return adviceTemplates.find { it.id == "fever" }
+            }
+        }
+        
+        // Fallback to text-based detection
         when {
             text.contains("grč") || text.contains("colic") || text.contains("grčevi") -> 
                 return adviceTemplates.find { it.id == "colic" }

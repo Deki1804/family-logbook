@@ -31,6 +31,9 @@ data class LogEntry(
     val temperature: Float? = null, // in Celsius
     val medicineGiven: String? = null, // medicine name
     val medicineTimestamp: Long? = null, // when medicine was given
+    val nextMedicineTime: Long? = null, // when next medicine dose should be taken (calculated from interval)
+    val medicineIntervalHours: Int? = null, // interval between medicine doses in hours
+    val symptoms: List<String>? = null, // list of symptoms (e.g., "temperatura", "kašalj", "povraćanje")
     
     // Finance tracking
     val amount: Double? = null, // for finance entries

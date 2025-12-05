@@ -284,8 +284,11 @@ class SettingsViewModel(
      * Resets all data for the current user.
      * Deletes all persons, entities, and entries.
      * Optionally reseeds sample data.
+     * 
+     * @param userId The user ID for reseeding sample data (required if reseedSample = true)
+     * @param reseedSample If true, seeds sample data after deletion
      */
-    suspend fun resetAllData(reseedSample: Boolean = false): Boolean {
+    suspend fun resetAllData(userId: String? = null, reseedSample: Boolean = false): Boolean {
         return try {
             // Delete all entries
             _entries.value.forEach { entry ->
@@ -309,9 +312,17 @@ class SettingsViewModel(
             
             // Optionally reseed sample data
             if (reseedSample) {
-                // Note: This would require access to FirestoreSeedData or similar
-                // For now, we'll just clear everything
-                android.util.Log.d("SettingsViewModel", "Reset complete. Sample data reseeding not yet implemented.")
+                if (userId != null) {
+                    try {
+                        com.familylogbook.app.data.repository.FirestoreSeedData.seedIfEmpty(userId)
+                        android.util.Log.i("SettingsViewModel", "Sample data reseeded for user $userId")
+                    } catch (e: Exception) {
+                        android.util.Log.e("SettingsViewModel", "Error reseeding sample data: ${e.message}", e)
+                        // Don't fail the reset if seeding fails
+                    }
+                } else {
+                    android.util.Log.w("SettingsViewModel", "Cannot reseed sample data: userId is null")
+                }
             }
             
             true
@@ -322,11 +333,21 @@ class SettingsViewModel(
     }
     
     fun exportToJson(): String {
-        return exportManager.exportToJson(_children.value, _entries.value)
+        return exportManager.exportToJson(
+            children = _children.value,
+            persons = _persons.value,
+            entities = _entities.value,
+            entries = _entries.value
+        )
     }
     
     fun exportToCsv(): String {
-        return exportManager.exportToCsv(_children.value, _entries.value)
+        return exportManager.exportToCsv(
+            children = _children.value,
+            persons = _persons.value,
+            entities = _entities.value,
+            entries = _entries.value
+        )
     }
     
     suspend fun importFromJson(jsonString: String): ImportResult {
@@ -335,32 +356,63 @@ class SettingsViewModel(
             return ImportResult.Error("Failed to parse JSON file")
         }
         
-        val (children, entries) = parsed
+        val exportData = parsed
         
-        // Import children (skip if already exists)
-        val existingChildIds = _children.value.map { it.id }.toSet()
-        children.forEach { child ->
-            if (!existingChildIds.contains(child.id)) {
-                repository.addChild(child)
+        // Import persons first (v2.0)
+        val existingPersonIds = _persons.value.map { it.id }.toSet()
+        var personsAdded = 0
+        exportData.persons.forEach { person ->
+            if (!existingPersonIds.contains(person.id)) {
+                repository.addPerson(person)
+                personsAdded++
             }
         }
         
-        // Import entries (skip if already exists)
+        // Import entities (v2.0)
+        val existingEntityIds = _entities.value.map { it.id }.toSet()
+        var entitiesAdded = 0
+        exportData.entities.forEach { entity ->
+            if (!existingEntityIds.contains(entity.id)) {
+                repository.addEntity(entity)
+                entitiesAdded++
+            }
+        }
+        
+        // Import children (legacy support)
+        val existingChildIds = _children.value.map { it.id }.toSet()
+        var childrenAdded = 0
+        exportData.children.forEach { child ->
+            if (!existingChildIds.contains(child.id)) {
+                repository.addChild(child)
+                childrenAdded++
+            }
+        }
+        
+        // Import entries last (after persons/entities are imported so references are valid)
         val existingEntryIds = _entries.value.map { it.id }.toSet()
-        entries.forEach { entry ->
+        var entriesAdded = 0
+        exportData.entries.forEach { entry ->
             if (!existingEntryIds.contains(entry.id)) {
                 repository.addEntry(entry)
+                entriesAdded++
             }
         }
         
         return ImportResult.Success(
-            childrenAdded = children.count { !existingChildIds.contains(it.id) },
-            entriesAdded = entries.count { !existingEntryIds.contains(it.id) }
+            childrenAdded = childrenAdded,
+            personsAdded = personsAdded,
+            entitiesAdded = entitiesAdded,
+            entriesAdded = entriesAdded
         )
     }
     
     sealed class ImportResult {
-        data class Success(val childrenAdded: Int, val entriesAdded: Int) : ImportResult()
+        data class Success(
+            val childrenAdded: Int = 0,
+            val personsAdded: Int = 0,
+            val entitiesAdded: Int = 0,
+            val entriesAdded: Int = 0
+        ) : ImportResult()
         data class Error(val message: String) : ImportResult()
     }
 }

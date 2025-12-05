@@ -116,5 +116,68 @@ class AuthManager(
     suspend fun sendPasswordResetEmail(email: String) {
         auth.sendPasswordResetEmail(email).await()
     }
+    
+    /**
+     * Deletes the current user account permanently.
+     * WARNING: This action cannot be undone!
+     */
+    suspend fun deleteAccount() {
+        val currentUser = auth.currentUser
+            ?: throw IllegalStateException("No user is currently signed in")
+        
+        currentUser.delete().await()
+    }
+    
+    /**
+     * Changes the password for the current user.
+     * Requires re-authentication for security.
+     * 
+     * @param currentPassword Current password for verification
+     * @param newPassword New password to set
+     */
+    suspend fun changePassword(currentPassword: String, newPassword: String) {
+        val currentUser = auth.currentUser
+            ?: throw IllegalStateException("No user is currently signed in")
+        
+        val email = currentUser.email
+            ?: throw IllegalStateException("User email is not available")
+        
+        // Re-authenticate user first
+        val credential = EmailAuthProvider.getCredential(email, currentPassword)
+        currentUser.reauthenticate(credential).await()
+        
+        // Change password
+        currentUser.updatePassword(newPassword).await()
+    }
+    
+    /**
+     * Changes the email address for the current user.
+     * Requires re-authentication for security.
+     * 
+     * @param currentPassword Current password for verification
+     * @param newEmail New email address
+     */
+    suspend fun changeEmail(currentPassword: String, newEmail: String) {
+        val currentUser = auth.currentUser
+            ?: throw IllegalStateException("No user is currently signed in")
+        
+        val currentEmail = currentUser.email
+            ?: throw IllegalStateException("User email is not available")
+        
+        // Re-authenticate user first
+        val credential = EmailAuthProvider.getCredential(currentEmail, currentPassword)
+        currentUser.reauthenticate(credential).await()
+        
+        // Change email
+        currentUser.updateEmail(newEmail).await()
+    }
+    
+    /**
+     * Checks if current user has email/password provider.
+     */
+    fun hasEmailPasswordProvider(): Boolean {
+        val currentUser = auth.currentUser ?: return false
+        return currentUser.email != null && !currentUser.isAnonymous
+    }
 }
 

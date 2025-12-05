@@ -38,7 +38,7 @@ fun QuickFeedingButtons(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "🍼 Quick Feeding Tracker",
+                text = "🍼 Brzo praćenje hranjenja",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -147,7 +147,7 @@ fun FeedingTimerCard(
                 ) {
                     Icon(Icons.Default.Stop, contentDescription = null)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Stop")
+                    Text("Zaustavi")
                 }
                 
                 Button(
@@ -155,6 +155,91 @@ fun FeedingTimerCard(
                     modifier = Modifier.weight(1f)
                 ) {
                     Text("Spremi")
+                }
+            }
+        }
+    }
+}
+
+// Symptom options for health tracking
+val COMMON_SYMPTOMS = listOf(
+    "Temperatura" to "🌡️",
+    "Kašalj" to "🤧",
+    "Povraćanje" to "🤮",
+    "Proljev" to "💩",
+    "Osip" to "🔴",
+    "Glavobolja" to "🤕",
+    "Curenje nosa" to "🤧",
+    "Bol u grlu" to "😷",
+    "Umalaksalost" to "😴",
+    "Gubitak apetita" to "🍽️",
+    "Bol u trbuhu" to "😰",
+    "Nesanica" to "😴"
+)
+
+@Composable
+fun SymptomCheckboxSection(
+    selectedSymptoms: Set<String>,
+    onSymptomsChange: (Set<String>) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "🏥 Simptomi",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+            
+            Text(
+                text = "Označi simptome koje primjećuješ",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            )
+            
+            // Grid of checkboxes (2 columns)
+            val symptomsPerRow = 2
+            COMMON_SYMPTOMS.chunked(symptomsPerRow).forEach { rowSymptoms ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    rowSymptoms.forEach { (symptom, emoji) ->
+                        FilterChip(
+                            selected = selectedSymptoms.contains(symptom),
+                            onClick = {
+                                val newSymptoms = if (selectedSymptoms.contains(symptom)) {
+                                    selectedSymptoms - symptom
+                                } else {
+                                    selectedSymptoms + symptom
+                                }
+                                onSymptomsChange(newSymptoms)
+                            },
+                            label = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(emoji, fontSize = 16.sp)
+                                    Text(symptom, fontSize = 12.sp)
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    // Fill remaining space if odd number of items
+                    if (rowSymptoms.size < symptomsPerRow) {
+                        Spacer(modifier = Modifier.weight((symptomsPerRow - rowSymptoms.size).toFloat()))
+                    }
                 }
             }
         }

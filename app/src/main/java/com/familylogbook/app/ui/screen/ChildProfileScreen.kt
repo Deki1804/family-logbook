@@ -9,15 +9,20 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.familylogbook.app.data.smarthome.SmartHomeManager
 import com.familylogbook.app.domain.model.Child
 import com.familylogbook.app.domain.model.LogEntry
+import com.familylogbook.app.domain.model.Person
 import com.familylogbook.app.ui.component.AdviceCard
+import com.familylogbook.app.ui.component.StatItem
 import com.familylogbook.app.ui.viewmodel.HomeViewModel
 import java.text.SimpleDateFormat
 import java.util.*
@@ -38,7 +43,7 @@ fun ChildProfileScreen(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            Text("Child not found")
+            Text("Dijete nije pronađeno")
         }
         return
     }
@@ -83,13 +88,25 @@ fun ChildProfileScreen(
             
             // Entries
             items(childEntries) { entry ->
+                val person = entry.personId?.let { personId ->
+                    viewModel.getPersonById(personId)
+                } ?: child?.let {
+                    Person(it.id, it.name, emoji = it.emoji, avatarColor = it.avatarColor)
+                }
+                val entity = entry.entityId?.let { entityId ->
+                    viewModel.getEntityById(entityId)
+                }
+                val context = LocalContext.current
+                val smartHomeManager = remember(context) { SmartHomeManager(context) }
                 Column(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     LogEntryCard(
                         entry = entry,
-                        child = child,
-                        viewModel = viewModel
+                        person = person,
+                        entity = entity,
+                        viewModel = viewModel,
+                        smartHomeManager = smartHomeManager
                     )
                 }
             }
@@ -141,32 +158,12 @@ fun ChildStatsSummary(childEntries: List<LogEntry>) {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                StatItem("Health", healthCount, Color(0xFFFF6B6B))
-                StatItem("Feeding", feedingCount, Color(0xFFFFB84D))
-                StatItem("Sleep", sleepCount, Color(0xFF4ECDC4))
-                StatItem("Development", developmentCount, Color(0xFF95E1D3))
+                StatItem("Zdravlje", healthCount, Color(0xFFFF6B6B))
+                StatItem("Hranjenje", feedingCount, Color(0xFFFFB84D))
+                StatItem("Spavanje", sleepCount, Color(0xFF4ECDC4))
+                StatItem("Razvoj", developmentCount, Color(0xFF95E1D3))
             }
         }
-    }
-}
-
-@Composable
-fun StatItem(label: String, count: Int, color: Color) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Text(
-            text = count.toString(),
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
-            color = color
-        )
-        Text(
-            text = label,
-            fontSize = 12.sp,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-        )
     }
 }
 

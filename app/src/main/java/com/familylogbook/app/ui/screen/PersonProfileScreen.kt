@@ -1,6 +1,7 @@
 package com.familylogbook.app.ui.screen
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,7 +13,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -21,9 +24,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.familylogbook.app.domain.model.Category
 import com.familylogbook.app.domain.model.Person
+import com.familylogbook.app.domain.model.PersonType
 import com.familylogbook.app.domain.model.LogEntry
 import com.familylogbook.app.domain.model.Mood
+import com.familylogbook.app.data.smarthome.SmartHomeManager
 import com.familylogbook.app.ui.component.AdviceCard
+import com.familylogbook.app.ui.component.StatItem
 import com.familylogbook.app.ui.viewmodel.HomeViewModel
 import kotlinx.coroutines.launch
 
@@ -46,12 +52,20 @@ fun PersonProfileScreen(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            Text("Person not found")
+            Text("Osoba nije pronađena")
         }
         return
     }
     
-    val pagerState = rememberPagerState(initialPage = 0) { 5 }
+    // Determine tabs based on person type
+    val tabs = when (person.type) {
+        PersonType.PARENT -> listOf("Pregled", "Zdravlje", "Raspoloženje", "Posao", "Bilješke")
+        PersonType.CHILD -> listOf("Pregled", "Zdravlje", "Razvoj", "Hranjenje", "Spavanje")
+        PersonType.PET -> listOf("Zdravlje", "Raspoloženje", "Hrana")
+        PersonType.OTHER_FAMILY_MEMBER -> listOf("Pregled", "Zdravlje", "Raspoloženje", "Bilješke")
+    }
+    
+    val pagerState = rememberPagerState(initialPage = 0) { tabs.size }
     val scope = rememberCoroutineScope()
     
     Scaffold(
@@ -90,7 +104,7 @@ fun PersonProfileScreen(
                 selectedTabIndex = pagerState.currentPage,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                listOf("Overview", "Health", "Development", "Feeding", "Sleep").forEachIndexed { index, title ->
+                tabs.forEachIndexed { index, title ->
                     Tab(
                         selected = pagerState.currentPage == index,
                         onClick = {
@@ -108,12 +122,44 @@ fun PersonProfileScreen(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize()
             ) { page ->
-                when (page) {
-                    0 -> PersonOverviewTab(person = person, entries = personEntries, viewModel = viewModel)
-                    1 -> PersonHealthTab(person = person, entries = personEntries, viewModel = viewModel)
-                    2 -> PersonDevelopmentTab(person = person, entries = personEntries, viewModel = viewModel)
-                    3 -> PersonFeedingTab(person = person, entries = personEntries, viewModel = viewModel)
-                    4 -> PersonSleepTab(person = person, entries = personEntries, viewModel = viewModel)
+                when (person.type) {
+                    PersonType.PARENT -> {
+                        when (page) {
+                            0 -> PersonOverviewTab(person = person, entries = personEntries, viewModel = viewModel)
+                            1 -> PersonHealthTab(person = person, entries = personEntries, viewModel = viewModel)
+                            2 -> PersonMoodTab(person = person, entries = personEntries, viewModel = viewModel)
+                            3 -> PersonWorkTab(person = person, entries = personEntries, viewModel = viewModel)
+                            4 -> PersonNotesTab(person = person, entries = personEntries, viewModel = viewModel)
+                            else -> {}
+                        }
+                    }
+                    PersonType.CHILD -> {
+                        when (page) {
+                            0 -> PersonOverviewTab(person = person, entries = personEntries, viewModel = viewModel)
+                            1 -> PersonHealthTab(person = person, entries = personEntries, viewModel = viewModel)
+                            2 -> PersonDevelopmentTab(person = person, entries = personEntries, viewModel = viewModel)
+                            3 -> PersonFeedingTab(person = person, entries = personEntries, viewModel = viewModel)
+                            4 -> PersonSleepTab(person = person, entries = personEntries, viewModel = viewModel)
+                            else -> {}
+                        }
+                    }
+                    PersonType.PET -> {
+                        when (page) {
+                            0 -> PersonHealthTab(person = person, entries = personEntries, viewModel = viewModel)
+                            1 -> PersonMoodTab(person = person, entries = personEntries, viewModel = viewModel)
+                            2 -> PersonFoodTab(person = person, entries = personEntries, viewModel = viewModel)
+                            else -> {}
+                        }
+                    }
+                    PersonType.OTHER_FAMILY_MEMBER -> {
+                        when (page) {
+                            0 -> PersonOverviewTab(person = person, entries = personEntries, viewModel = viewModel)
+                            1 -> PersonHealthTab(person = person, entries = personEntries, viewModel = viewModel)
+                            2 -> PersonMoodTab(person = person, entries = personEntries, viewModel = viewModel)
+                            3 -> PersonNotesTab(person = person, entries = personEntries, viewModel = viewModel)
+                            else -> {}
+                        }
+                    }
                 }
             }
         }
@@ -221,11 +267,21 @@ fun PersonOverviewTab(
             )
         }
         
-        items(entries.take(5)) { entry ->
+        items(entries.take(10)) { entry ->
+            val person = entry.personId?.let { personId ->
+                viewModel.getPersonById(personId)
+            }
+            val entity = entry.entityId?.let { entityId ->
+                viewModel.getEntityById(entityId)
+            }
+            val context = LocalContext.current
+            val smartHomeManager = remember(context) { SmartHomeManager(context) }
             LogEntryCard(
                 entry = entry,
-                child = null,
-                viewModel = viewModel
+                person = person,
+                entity = entity,
+                viewModel = viewModel,
+                smartHomeManager = smartHomeManager
             )
         }
     }
@@ -238,112 +294,35 @@ fun PersonHealthTab(
     viewModel: HomeViewModel
 ) {
     val healthEntries = entries.filter { it.category == Category.HEALTH }.sortedByDescending { it.timestamp }
-    val temperatureEntries = healthEntries.filter { it.temperature != null }
-    val medicineEntries = healthEntries.filter { it.medicineGiven != null }
     
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Temperature chart
-        if (temperatureEntries.isNotEmpty()) {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "Temperature History",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        temperatureEntries.take(7).forEach { entry ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = java.text.SimpleDateFormat("MMM dd, HH:mm", java.util.Locale.getDefault())
-                                        .format(java.util.Date(entry.timestamp)),
-                                    fontSize = 12.sp
-                                )
-                                Text(
-                                    text = "${entry.temperature}°C",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        // Medicines log
-        if (medicineEntries.isNotEmpty()) {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "Medicines",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        medicineEntries.take(10).forEach { entry ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = entry.medicineGiven ?: "",
-                                    fontSize = 14.sp
-                                )
-                                Text(
-                                    text = java.text.SimpleDateFormat("MMM dd, HH:mm", java.util.Locale.getDefault())
-                                        .format(java.util.Date(entry.timestamp)),
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        // All health entries
         item {
             Text(
-                text = "All Health Entries",
+                text = "Health Entries",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
         }
         
         items(healthEntries) { entry ->
+            val person = entry.personId?.let { personId ->
+                viewModel.getPersonById(personId)
+            }
+            val entity = entry.entityId?.let { entityId ->
+                viewModel.getEntityById(entityId)
+            }
+            val context = LocalContext.current
+            val smartHomeManager = remember(context) { SmartHomeManager(context) }
             LogEntryCard(
                 entry = entry,
-                child = null,
-                viewModel = viewModel
+                person = person,
+                entity = entity,
+                viewModel = viewModel,
+                smartHomeManager = smartHomeManager
             )
         }
         
@@ -354,7 +333,7 @@ fun PersonHealthTab(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "No health entries yet",
+                        text = "Još nema zapisa o zdravlju",
                         fontSize = 16.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
@@ -386,10 +365,20 @@ fun PersonDevelopmentTab(
         }
         
         items(developmentEntries) { entry ->
+            val person = entry.personId?.let { personId ->
+                viewModel.getPersonById(personId)
+            }
+            val entity = entry.entityId?.let { entityId ->
+                viewModel.getEntityById(entityId)
+            }
+            val context = LocalContext.current
+            val smartHomeManager = remember(context) { SmartHomeManager(context) }
             LogEntryCard(
                 entry = entry,
-                child = null,
-                viewModel = viewModel
+                person = person,
+                entity = entity,
+                viewModel = viewModel,
+                smartHomeManager = smartHomeManager
             )
         }
         
@@ -400,7 +389,7 @@ fun PersonDevelopmentTab(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "No development entries yet",
+                        text = "Još nema zapisa o razvoju",
                         fontSize = 16.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
@@ -420,11 +409,98 @@ fun PersonFeedingTab(
     val bottleFeedings = feedingEntries.filter { it.feedingType == com.familylogbook.app.domain.model.FeedingType.BOTTLE }
     val totalBottleAmount = bottleFeedings.sumOf { it.feedingAmount?.toLong() ?: 0L }
     
+    // Calculate intervals between feedings (in hours)
+    val feedingIntervals = remember(feedingEntries) {
+        if (feedingEntries.size >= 2) {
+            feedingEntries.sortedBy { it.timestamp }.zipWithNext().map { (current, next) ->
+                (current.timestamp - next.timestamp) / (1000.0 * 60 * 60) // Convert to hours
+            }
+        } else emptyList()
+    }
+    val averageInterval = if (feedingIntervals.isNotEmpty()) {
+        feedingIntervals.average()
+    } else null
+    
+    // Calculate average breastfeeding duration (extract from rawText)
+    val breastfeedingEntries = feedingEntries.filter { 
+        it.feedingType == com.familylogbook.app.domain.model.FeedingType.BREAST_LEFT ||
+        it.feedingType == com.familylogbook.app.domain.model.FeedingType.BREAST_RIGHT
+    }
+    val averageBreastfeedingDuration = remember(breastfeedingEntries) {
+        val durations = breastfeedingEntries.mapNotNull { entry ->
+            // Try to extract duration from text like "trajalo 15 minuta" or "15 min"
+            val durationRegex = Regex("""(\d+)\s*(?:min|minuta|minute)""", RegexOption.IGNORE_CASE)
+            durationRegex.find(entry.rawText)?.groupValues?.get(1)?.toIntOrNull()
+        }
+        if (durations.isNotEmpty()) durations.average() else null
+    }
+    
+    // Last feeding info
+    val lastFeeding = feedingEntries.firstOrNull()
+    val lastFeedingTime = lastFeeding?.timestamp
+    val hoursSinceLastFeeding = remember(lastFeedingTime) {
+        if (lastFeedingTime != null) {
+            (System.currentTimeMillis() - lastFeedingTime) / (1000.0 * 60 * 60)
+        } else null
+    }
+    
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Last Feeding Card
+        if (lastFeeding != null) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Zadnje hranjenje",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = when (lastFeeding.feedingType) {
+                                    com.familylogbook.app.domain.model.FeedingType.BREAST_LEFT -> "👈 Dojenje (lijeva)"
+                                    com.familylogbook.app.domain.model.FeedingType.BREAST_RIGHT -> "👉 Dojenje (desna)"
+                                    com.familylogbook.app.domain.model.FeedingType.BOTTLE -> "🍼 Bočica${lastFeeding.feedingAmount?.let { " - ${it}ml" } ?: ""}"
+                                    null -> "🍼 Hranjenje"
+                                },
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                                    .format(java.util.Date(lastFeeding.timestamp)),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        if (hoursSinceLastFeeding != null) {
+                            Text(
+                                text = "Prije ${String.format("%.1f", hoursSinceLastFeeding.toFloat())} sati",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        
         // Summary
         item {
             Card(
@@ -440,19 +516,96 @@ fun PersonFeedingTab(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "Feeding Summary",
+                        text = "Sažetak",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Total feedings: ${feedingEntries.size}",
+                        text = "Ukupno hranjenja: ${feedingEntries.size}",
                         fontSize = 14.sp
                     )
                     if (totalBottleAmount > 0) {
                         Text(
-                            text = "Total bottle amount: ${totalBottleAmount}ml",
+                            text = "Ukupno bočica: ${totalBottleAmount}ml",
                             fontSize = 14.sp
                         )
+                    }
+                    if (averageInterval != null) {
+                        Text(
+                            text = "Prosječni interval: ${String.format("%.1f", averageInterval.toFloat())} sati",
+                            fontSize = 14.sp
+                        )
+                    }
+                    if (averageBreastfeedingDuration != null) {
+                        Text(
+                            text = "Prosječno trajanje dojenja: ${String.format("%.0f", averageBreastfeedingDuration.toFloat())} min",
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+            }
+        }
+        
+        // Feeding Intervals Chart
+        if (feedingIntervals.isNotEmpty()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = "Intervali između hranjenja",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        // Simple bar chart representation
+                        val maxInterval = feedingIntervals.maxOrNull() ?: 1.0
+                        val intervalsToShow = feedingIntervals.take(10)
+                        intervalsToShow.forEachIndexed { index, interval ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "#${index + 1}",
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.width(30.dp)
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(20.dp)
+                                        .background(
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+                                            RoundedCornerShape(4.dp)
+                                        )
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxHeight()
+                                            .fillMaxWidth((interval / maxInterval).coerceAtMost(1.0).toFloat())
+                                            .background(
+                                                MaterialTheme.colorScheme.primary,
+                                                RoundedCornerShape(4.dp)
+                                            )
+                                    )
+                                }
+                                Text(
+                                    text = "${String.format("%.1f", interval.toFloat())}h",
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.width(40.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -468,10 +621,20 @@ fun PersonFeedingTab(
         }
         
         items(feedingEntries) { entry ->
+            val person = entry.personId?.let { personId ->
+                viewModel.getPersonById(personId)
+            }
+            val entity = entry.entityId?.let { entityId ->
+                viewModel.getEntityById(entityId)
+            }
+            val context = LocalContext.current
+            val smartHomeManager = remember(context) { SmartHomeManager(context) }
             LogEntryCard(
                 entry = entry,
-                child = null,
-                viewModel = viewModel
+                person = person,
+                entity = entity,
+                viewModel = viewModel,
+                smartHomeManager = smartHomeManager
             )
         }
         
@@ -482,7 +645,7 @@ fun PersonFeedingTab(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "No feeding entries yet",
+                        text = "Još nema zapisa o hranjenju",
                         fontSize = 16.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
@@ -514,10 +677,20 @@ fun PersonSleepTab(
         }
         
         items(sleepEntries) { entry ->
+            val person = entry.personId?.let { personId ->
+                viewModel.getPersonById(personId)
+            }
+            val entity = entry.entityId?.let { entityId ->
+                viewModel.getEntityById(entityId)
+            }
+            val context = LocalContext.current
+            val smartHomeManager = remember(context) { SmartHomeManager(context) }
             LogEntryCard(
                 entry = entry,
-                child = null,
-                viewModel = viewModel
+                person = person,
+                entity = entity,
+                viewModel = viewModel,
+                smartHomeManager = smartHomeManager
             )
         }
         
@@ -528,7 +701,7 @@ fun PersonSleepTab(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "No sleep entries yet",
+                        text = "Još nema zapisa o spavanju",
                         fontSize = 16.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
@@ -567,12 +740,275 @@ fun PersonStatsSummary(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                StatItem("Health", healthCount, Color(0xFFFF6B6B))
-                StatItem("Feeding", feedingCount, Color(0xFFFFB84D))
-                StatItem("Sleep", sleepCount, Color(0xFF4ECDC4))
-                StatItem("Development", developmentCount, Color(0xFF95E1D3))
+                StatItem("Zdravlje", healthCount, Color(0xFFFF6B6B))
+                StatItem("Hranjenje", feedingCount, Color(0xFFFFB84D))
+                StatItem("Spavanje", sleepCount, Color(0xFF4ECDC4))
+                StatItem("Razvoj", developmentCount, Color(0xFF95E1D3))
             }
         }
     }
 }
 
+@Composable
+fun PersonMoodTab(
+    person: Person,
+    entries: List<LogEntry>,
+    viewModel: HomeViewModel
+) {
+    val moodEntries = entries.filter { it.mood != null }.sortedByDescending { it.timestamp }
+    val moodCounts = moodEntries.mapNotNull { it.mood }.groupingBy { it }.eachCount()
+    
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Mood summary
+        if (moodCounts.isNotEmpty()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Mood Overview",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        moodCounts.forEach { (mood, count) ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(mood.name, fontSize = 14.sp)
+                                Text("$count", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // All mood entries
+        item {
+            Text(
+                text = "All Mood Entries",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        
+        items(moodEntries) { entry ->
+            val person = entry.personId?.let { personId ->
+                viewModel.getPersonById(personId)
+            }
+            val entity = entry.entityId?.let { entityId ->
+                viewModel.getEntityById(entityId)
+            }
+            val context = LocalContext.current
+            val smartHomeManager = remember(context) { SmartHomeManager(context) }
+            LogEntryCard(
+                entry = entry,
+                person = person,
+                entity = entity,
+                viewModel = viewModel,
+                smartHomeManager = smartHomeManager
+            )
+        }
+        
+        if (moodEntries.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Još nema zapisa o raspoloženju",
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PersonWorkTab(
+    person: Person,
+    entries: List<LogEntry>,
+    viewModel: HomeViewModel
+) {
+    val workEntries = entries.filter { it.category == Category.WORK }.sortedByDescending { it.timestamp }
+    
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            Text(
+                text = "Work Entries",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        
+        items(workEntries) { entry ->
+            val person = entry.personId?.let { personId ->
+                viewModel.getPersonById(personId)
+            }
+            val entity = entry.entityId?.let { entityId ->
+                viewModel.getEntityById(entityId)
+            }
+            val context = LocalContext.current
+            val smartHomeManager = remember(context) { SmartHomeManager(context) }
+            LogEntryCard(
+                entry = entry,
+                person = person,
+                entity = entity,
+                viewModel = viewModel,
+                smartHomeManager = smartHomeManager
+            )
+        }
+        
+        if (workEntries.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Još nema zapisa o poslu",
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PersonNotesTab(
+    person: Person,
+    entries: List<LogEntry>,
+    viewModel: HomeViewModel
+) {
+    val notesEntries = entries.filter { it.category == Category.OTHER }
+        .sortedByDescending { it.timestamp }
+    
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            Text(
+                text = "Bilješke",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        
+        items(notesEntries) { entry ->
+            val person = entry.personId?.let { personId ->
+                viewModel.getPersonById(personId)
+            }
+            val entity = entry.entityId?.let { entityId ->
+                viewModel.getEntityById(entityId)
+            }
+            val context = LocalContext.current
+            val smartHomeManager = remember(context) { SmartHomeManager(context) }
+            LogEntryCard(
+                entry = entry,
+                person = person,
+                entity = entity,
+                viewModel = viewModel,
+                smartHomeManager = smartHomeManager
+            )
+        }
+        
+        if (notesEntries.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Još nema bilješki",
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PersonFoodTab(
+    person: Person,
+    entries: List<LogEntry>,
+    viewModel: HomeViewModel
+) {
+    val foodEntries = entries.filter { 
+        it.category == Category.FEEDING || 
+        (it.category == Category.OTHER && (it.rawText.lowercase().contains("hrana") || it.rawText.lowercase().contains("food")))
+    }.sortedByDescending { it.timestamp }
+    
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            Text(
+                text = "Food Entries",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        
+        items(foodEntries) { entry ->
+            val person = entry.personId?.let { personId ->
+                viewModel.getPersonById(personId)
+            }
+            val entity = entry.entityId?.let { entityId ->
+                viewModel.getEntityById(entityId)
+            }
+            val context = LocalContext.current
+            val smartHomeManager = remember(context) { SmartHomeManager(context) }
+            LogEntryCard(
+                entry = entry,
+                person = person,
+                entity = entity,
+                viewModel = viewModel,
+                smartHomeManager = smartHomeManager
+            )
+        }
+        
+        if (foodEntries.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Još nema zapisa o hrani",
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+            }
+        }
+    }
+}

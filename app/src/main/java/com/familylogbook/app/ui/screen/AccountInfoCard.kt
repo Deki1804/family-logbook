@@ -3,8 +3,12 @@ package com.familylogbook.app.ui.screen
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -14,7 +18,10 @@ import com.familylogbook.app.data.auth.AuthManager
 @Composable
 fun AccountInfoCard(
     authManager: AuthManager,
-    onUpgradeClick: () -> Unit = {}
+    onUpgradeClick: () -> Unit = {},
+    onSignOut: () -> Unit = {},
+    onDeleteAccount: () -> Unit = {},
+    onChangePassword: () -> Unit = {}
 ) {
     val currentUser = authManager.getCurrentUser()
     val isAnonymous = authManager.isAnonymous()
@@ -33,7 +40,7 @@ fun AccountInfoCard(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = "Account",
+                text = "Račun",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -44,14 +51,14 @@ fun AccountInfoCard(
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text(
-                        text = "🔒 Anonymous Account",
+                        text = "🔒 Anonimni račun",
                         fontSize = 14.sp,
                         modifier = Modifier.padding(12.dp),
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                 }
                 Text(
-                    text = "Your data is stored locally. Upgrade to save your account permanently.",
+                    text = "Tvoji podaci su pohranjeni lokalno. Nadogradi da sačuvaš račun trajno.",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
@@ -65,7 +72,7 @@ fun AccountInfoCard(
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
-                            text = "✅ Signed In",
+                            text = "✅ Prijavljen",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onTertiaryContainer
@@ -83,19 +90,60 @@ fun AccountInfoCard(
             
             userId?.let {
                 Text(
-                    text = "User ID: ${it.take(8)}...",
+                    text = "ID korisnika: ${it.take(8)}...",
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                 )
             }
             
-            // Upgrade account button
+            // Action buttons
             if (isAnonymous) {
                 OutlinedButton(
                     onClick = onUpgradeClick,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Upgrade Account")
+                    Text("Nadogradi račun")
+                }
+            } else {
+                // For logged-in users, show account management options
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (authManager.hasEmailPasswordProvider()) {
+                        OutlinedButton(
+                            onClick = onChangePassword,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Promijeni lozinku")
+                        }
+                    }
+                    
+                    OutlinedButton(
+                        onClick = onSignOut,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Odjavi se")
+                    }
+                }
+            }
+            
+            // Delete account button (always visible, but more prominent for non-anonymous)
+            if (!isAnonymous) {
+                OutlinedButton(
+                    onClick = onDeleteAccount,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Obriši račun")
                 }
             }
         }

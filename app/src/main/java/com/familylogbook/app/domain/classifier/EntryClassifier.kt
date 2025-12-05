@@ -20,6 +20,7 @@ class EntryClassifier {
         val tags = extractTags(lowerText, category)
         val temperature = extractTemperature(text)
         val medicine = extractMedicine(text)
+        val medicineInterval = extractMedicineInterval(text)
         val (feedingType, feedingAmount) = extractFeeding(text)
         
         return ClassifiedEntryMetadata(
@@ -28,6 +29,7 @@ class EntryClassifier {
             mood = mood,
             temperature = temperature,
             medicineGiven = medicine,
+            medicineIntervalHours = medicineInterval,
             feedingType = feedingType,
             feedingAmount = feedingAmount
         )
@@ -124,8 +126,10 @@ class EntryClassifier {
         
         // Shopping keywords
         val shoppingKeywords = listOf(
-            "shopping", "kupovina", "buy", "kupio", "purchase", "nabava", "grocery", "namirnice",
-            "store", "trgovina", "shop", "dućan", "list", "lista", "need to buy", "treba kupiti"
+            "shopping", "kupovina", "grocery", "namirnice",
+            "store", "trgovina", "shop", "dućan",
+            "buy", "kupiti", "kupit", "kupi", "kupio", "kupujemo", "purchase", "nabava",
+            "list", "lista", "spisak", "popis", "need to buy", "treba kupiti", "za kupiti"
         )
         
         // Home keywords (legacy, keeping for backward compatibility)
@@ -149,8 +153,60 @@ class EntryClassifier {
             moodKeywords.any { text.contains(it) } -> return Category.MOOD
             developmentKeywords.any { text.contains(it) } -> return Category.DEVELOPMENT
             schoolKeywords.any { text.contains(it) } -> return Category.SCHOOL
+            // Heuristika: čisti popis namirnica bez glagola → SHOPPING
+            looksLikeShoppingList(text) -> return Category.SHOPPING
             else -> return Category.OTHER
         }
+    }
+
+    /**
+     * Heuristika za prepoznavanje popisa namirnica:
+     * - puno zareza ili novih redova
+     * - kratke riječi (1–3 riječi po stavci)
+     * - gotovo bez glagola
+     */
+    private fun looksLikeShoppingList(text: String): Boolean {
+        // Ako je već jako dugačak narativni tekst, preskoči
+        if (text.length > 200) return false
+
+        // Razbij po novom redu i zarezima
+        val rawItems = text
+            .replace(";", ",")
+            .split("\n", ",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+
+        if (rawItems.size < 3) return false // treba bar nekoliko stavki
+
+        // Riječi koje često označavaju glagole / rečenice (ono što NE želimo)
+        val verbLikeTokens = listOf(
+            "je", "sam", "si", "smo", "ste", "su",
+            "bio", "bila", "bilo", "bili", "bile",
+            "imam", "imamo", "imate", "imaju",
+            "bio sam", "radili", "išli", "dosao", "došao",
+            "went", "did", "was", "were", "have", "has", "is", "are"
+        )
+
+        var sentenceLikeCount = 0
+
+        for (item in rawItems) {
+            val words = item.split(" ").filter { it.isNotBlank() }
+            // Ako je previše riječi, vjerojatno nije samo "mlijeko, kruh..."
+            if (words.size > 4) {
+                sentenceLikeCount++
+                continue
+            }
+
+            // Ako sadrži glagolske fraze, tretiraj kao rečenicu
+            if (verbLikeTokens.any { token -> item.contains(token) }) {
+                sentenceLikeCount++
+            }
+        }
+
+        // Ako je većina stavki kratka i bez glagola → shopping lista
+        val listSize = rawItems.size
+        val sentenceRatio = sentenceLikeCount.toDouble() / listSize.toDouble()
+        return sentenceRatio < 0.3
     }
     
     private fun detectMood(text: String): Mood? {
@@ -309,6 +365,77 @@ class EntryClassifier {
         return null
     }
     
+    private fun extractMedicineInterval(text: String): Int? {
+        val lowerText = text.lowercase()
+        
+        // First, try to extract explicit interval from text
+        val patterns = listOf(
+            Regex("svakih\\s+(\\d+)\\s*(?:sati|h|hours|hora)"),
+            Regex("every\\s+(\\d+)\\s*(?:hours|h)"),
+            Regex("(\\d+)\\s*(?:h|hours|sati)\\s*(?:kasnije|later|after)"),
+            Regex("(\\d+)\\s*(?:h|hours|sati)\\s*(?:interval|intervala)")
+        )
+        
+        for (pattern in patterns) {
+            val match = pattern.find(lowerText)
+            if (match != null) {
+                val hours = match.groupValues[1].toIntOrNull()
+                if (hours != null && hours > 0 && hours <= 24) {
+                    return hours
+                }
+            }
+        }
+        
+        // If no explicit interval, use AI knowledge of common medicines
+        // Paracetamol / Panadol / Acetaminophen - usually every 4-6 hours
+        if (lowerText.contains("paracetamol") || lowerText.contains("panadol") || 
+            lowerText.contains("acetaminophen") || lowerText.contains("tylenol")) {
+            return 6
+        }
+        
+        // Ibuprofen / Brufen / Advil - usually every 6-8 hours
+        if (lowerText.contains("ibuprofen") || lowerText.contains("brufen") || 
+            lowerText.contains("advil") || lowerText.contains("nurofen")) {
+            return 8
+        }
+        
+        // Aspirin - usually every 4-6 hours
+        if (lowerText.contains("aspirin") || lowerText.contains("aspirin")) {
+            return 6
+        }
+        
+        // Antibiotics - usually every 8-12 hours
+        if (lowerText.contains("amoxicillin") || lowerText.contains("amoksicilin") ||
+            lowerText.contains("penicillin") || lowerText.contains("penicilin") ||
+            lowerText.contains("antibiotik") || lowerText.contains("antibiotic")) {
+            return 8
+        }
+        
+        // Cough syrup / Kašalj sirup - usually every 6-8 hours
+        if (lowerText.contains("sirup") || lowerText.contains("syrup") ||
+            lowerText.contains("kašalj") || lowerText.contains("cough")) {
+            return 6
+        }
+        
+        // Fever medicine / Lijek za temperaturu - usually every 6 hours
+        if (lowerText.contains("temperatur") || lowerText.contains("fever") ||
+            lowerText.contains("vrućica")) {
+            return 6
+        }
+        
+        // If medicine is mentioned but no specific interval found, default to 6 hours
+        // (safe default for most common medicines)
+        val medicineKeywords = listOf(
+            "lijek", "medicine", "medication", "tableta", "tablet", "kapsula", "capsule",
+            "sirup", "syrup", "drops", "kapi", "injekcija", "injection"
+        )
+        if (medicineKeywords.any { lowerText.contains(it) }) {
+            return 6 // Safe default
+        }
+        
+        return null
+    }
+    
     private fun extractFeeding(text: String): Pair<FeedingType?, Int?> {
         val lowerText = text.lowercase()
         
@@ -334,6 +461,82 @@ class EntryClassifier {
         }
         
         return Pair(feedingType, amount)
+    }
+    
+    private fun extractReminderDate(text: String): Long? {
+        val lowerText = text.lowercase()
+        val now = System.currentTimeMillis()
+        val calendar = java.util.Calendar.getInstance()
+        calendar.timeInMillis = now
+        
+        // Patterns for dates: "15.12.2024", "15/12/2024", "15-12-2024", "15.12", "decembar 15", etc.
+        val datePatterns = listOf(
+            // DD.MM.YYYY or DD/MM/YYYY or DD-MM-YYYY
+            Regex("(\\d{1,2})[./-](\\d{1,2})[./-](\\d{4})"),
+            // DD.MM (assume current year)
+            Regex("(\\d{1,2})[./-](\\d{1,2})(?!\\d)")
+        )
+        
+        for (pattern in datePatterns) {
+            val match = pattern.find(text)
+            if (match != null) {
+                try {
+                    val groups = match.groupValues
+                    var day: Int
+                    var month: Int
+                    var year: Int = calendar.get(java.util.Calendar.YEAR)
+                    
+                    if (groups.size >= 3) {
+                        day = groups[1].toInt()
+                        month = groups[2].toInt()
+                        if (groups.size > 3 && groups[3].length == 4) {
+                            year = groups[3].toInt()
+                        }
+                        
+                        // Validate date
+                        if (day in 1..31 && month in 1..12 && year >= 2020 && year <= 2100) {
+                            calendar.set(year, month - 1, day, 8, 0, 0) // Set to 8 AM
+                            calendar.set(java.util.Calendar.MILLISECOND, 0)
+                            
+                            // If date is in the past this year, assume next year
+                            if (calendar.timeInMillis < now && year == calendar.get(java.util.Calendar.YEAR)) {
+                                calendar.set(java.util.Calendar.YEAR, year + 1)
+                            }
+                            
+                            return calendar.timeInMillis
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Continue to next pattern
+                }
+            }
+        }
+        
+        // Relative dates: "sutra" (tomorrow), "za 3 dana" (in 3 days), etc.
+        if (lowerText.contains("sutra") || lowerText.contains("tomorrow")) {
+            calendar.add(java.util.Calendar.DAY_OF_YEAR, 1)
+            calendar.set(java.util.Calendar.HOUR_OF_DAY, 8)
+            calendar.set(java.util.Calendar.MINUTE, 0)
+            calendar.set(java.util.Calendar.SECOND, 0)
+            calendar.set(java.util.Calendar.MILLISECOND, 0)
+            return calendar.timeInMillis
+        }
+        
+        val daysPattern = Regex("(?:za|in|after)\\s+(\\d+)\\s*(?:dan|days|dana)")
+        val daysMatch = daysPattern.find(lowerText)
+        if (daysMatch != null) {
+            val days = daysMatch.groupValues[1].toIntOrNull()
+            if (days != null && days > 0 && days <= 365) {
+                calendar.add(java.util.Calendar.DAY_OF_YEAR, days)
+                calendar.set(java.util.Calendar.HOUR_OF_DAY, 8)
+                calendar.set(java.util.Calendar.MINUTE, 0)
+                calendar.set(java.util.Calendar.SECOND, 0)
+                calendar.set(java.util.Calendar.MILLISECOND, 0)
+                return calendar.timeInMillis
+            }
+        }
+        
+        return null
     }
 }
 

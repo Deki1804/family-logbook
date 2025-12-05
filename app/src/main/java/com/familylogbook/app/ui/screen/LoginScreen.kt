@@ -45,10 +45,10 @@ fun LoginScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (isSignUp) "Create Account" else "Sign In") },
+                title = { Text(if (isSignUp) "Kreiraj račun" else "Prijavi se") },
                 navigationIcon = {
                     TextButton(onClick = onCancel) {
-                        Text("Cancel")
+                        Text("Odustani")
                     }
                 }
             )
@@ -71,7 +71,7 @@ fun LoginScreen(
                     )
                 ) {
                     Text(
-                        text = "🔒 Upgrade Your Account",
+                        text = "🔒 Nadogradi svoj račun",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(16.dp),
@@ -81,7 +81,7 @@ fun LoginScreen(
             }
             
             Text(
-                text = if (isSignUp) "Create a permanent account" else "Sign in to your account",
+                text = if (isSignUp) "Kreiraj trajni račun" else "Prijavi se na svoj račun",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Medium,
                 textAlign = TextAlign.Center
@@ -127,7 +127,7 @@ fun LoginScreen(
                 onValueChange = { email = it; errorMessage = null },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Email") },
-                placeholder = { Text("your@email.com") },
+                placeholder = { Text("tvoj@email.com") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                 enabled = !isLoading
             )
@@ -137,8 +137,8 @@ fun LoginScreen(
                 value = password,
                 onValueChange = { password = it; errorMessage = null },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Password") },
-                placeholder = { Text("Enter password") },
+                label = { Text("Lozinka") },
+                placeholder = { Text("Unesi lozinku") },
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 enabled = !isLoading
@@ -150,8 +150,8 @@ fun LoginScreen(
                     value = confirmPassword,
                     onValueChange = { confirmPassword = it; errorMessage = null },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Confirm Password") },
-                    placeholder = { Text("Confirm password") },
+                    label = { Text("Potvrdi lozinku") },
+                    placeholder = { Text("Potvrdi lozinku") },
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     enabled = !isLoading
@@ -169,7 +169,7 @@ fun LoginScreen(
                         try {
                             // Validate email format
                             if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
-                                errorMessage = "Please enter a valid email address"
+                                errorMessage = "Molimo unesi valjanu email adresu"
                                 isLoading = false
                                 return@launch
                             }
@@ -177,13 +177,13 @@ fun LoginScreen(
                             if (isSignUp) {
                                 // Validate passwords match
                                 if (password != confirmPassword) {
-                                    errorMessage = "Passwords do not match"
+                                    errorMessage = "Lozinke se ne podudaraju"
                                     isLoading = false
                                     return@launch
                                 }
                                 
                                 if (password.length < 6) {
-                                    errorMessage = "Password must be at least 6 characters"
+                                    errorMessage = "Lozinka mora imati najmanje 6 znakova"
                                     isLoading = false
                                     return@launch
                                 }
@@ -191,16 +191,16 @@ fun LoginScreen(
                                 if (isAnonymous) {
                                     // Upgrade anonymous account
                                     authManager.linkEmailToAnonymousAccount(email, password)
-                                    successMessage = "Account upgraded successfully!"
+                                    successMessage = "Račun je uspješno nadograđen!"
                                 } else {
                                     // Create new account
                                     authManager.createAccountWithEmail(email, password)
-                                    successMessage = "Account created successfully!"
+                                    successMessage = "Račun je uspješno kreiran!"
                                 }
                             } else {
                                 // Sign in
                                 authManager.signInWithEmail(email, password)
-                                successMessage = "Signed in successfully!"
+                                successMessage = "Uspješno prijavljen!"
                             }
                             
                             // Wait a bit to show success message, then navigate
@@ -223,7 +223,7 @@ fun LoginScreen(
                         color = MaterialTheme.colorScheme.onPrimary
                     )
                 } else {
-                    Text(if (isSignUp) "Create Account" else "Sign In")
+                    Text(if (isSignUp) "Kreiraj račun" else "Prijavi se")
                 }
             }
             
@@ -233,11 +233,11 @@ fun LoginScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (isSignUp) "Already have an account? " else "Don't have an account? ",
+                    text = if (isSignUp) "Već imaš račun? " else "Nemaš račun? ",
                     fontSize = 14.sp
                 )
                 Text(
-                    text = if (isSignUp) "Sign In" else "Sign Up",
+                    text = if (isSignUp) "Prijavi se" else "Registriraj se",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
@@ -254,7 +254,7 @@ fun LoginScreen(
                 TextButton(onClick = {
                     scope.launch {
                         if (email.isBlank()) {
-                            errorMessage = "Please enter your email first"
+                            errorMessage = "Molimo unesi svoj email prvo"
                             return@launch
                         }
                         if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
@@ -263,13 +263,13 @@ fun LoginScreen(
                         }
                         try {
                             authManager.sendPasswordResetEmail(email)
-                            successMessage = "Password reset email sent! Check your inbox."
+                            successMessage = "Email za reset lozinke poslan! Provjeri svoj inbox."
                         } catch (e: Exception) {
                             errorMessage = getFriendlyErrorMessage(e)
                         }
                     }
                 }) {
-                    Text("Forgot Password?")
+                    Text("Zaboravljena lozinka?")
                 }
             }
         }
@@ -283,21 +283,21 @@ private fun getFriendlyErrorMessage(exception: Exception): String {
     val message = exception.message ?: ""
     return when {
         message.contains("email address is badly formatted", ignoreCase = true) -> 
-            "Please enter a valid email address"
+            "Molimo unesi valjanu email adresu"
         message.contains("password is too weak", ignoreCase = true) -> 
-            "Password is too weak. Please use a stronger password."
+            "Lozinka je previše slaba. Molimo koristi jaču lozinku."
         message.contains("email address is already in use", ignoreCase = true) -> 
-            "This email is already registered. Try signing in instead."
+            "Ovaj email je već registriran. Pokušaj se prijaviti umjesto toga."
         message.contains("there is no user record", ignoreCase = true) -> 
-            "No account found with this email. Check your email or sign up."
+            "Nije pronađen račun s ovim emailom. Provjeri svoj email ili se registriraj."
         message.contains("password is invalid", ignoreCase = true) || 
         message.contains("wrong password", ignoreCase = true) -> 
-            "Incorrect password. Please try again."
+            "Netočna lozinka. Molimo pokušaj ponovo."
         message.contains("network", ignoreCase = true) -> 
-            "Network error. Please check your internet connection."
+            "Greška mreže. Molimo provjeri svoju internetsku vezu."
         message.contains("too many requests", ignoreCase = true) -> 
-            "Too many attempts. Please wait a moment and try again."
-        else -> exception.message ?: "An error occurred. Please try again."
+            "Previše pokušaja. Molimo pričekaj trenutak i pokušaj ponovo."
+        else -> exception.message ?: "Došlo je do greške. Molimo pokušaj ponovo."
     }
 }
 

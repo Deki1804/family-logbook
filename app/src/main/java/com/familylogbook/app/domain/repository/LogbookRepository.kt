@@ -9,7 +9,9 @@ import kotlinx.coroutines.flow.Flow
 interface LogbookRepository {
     fun getAllEntries(): Flow<List<LogEntry>>
     suspend fun addEntry(entry: LogEntry)
+    suspend fun updateEntry(entry: LogEntry)
     suspend fun deleteEntry(entryId: String)
+    suspend fun getEntryById(entryId: String): LogEntry?
     
     // Legacy Child methods (for backward compatibility)
     fun getAllChildren(): Flow<List<Child>>

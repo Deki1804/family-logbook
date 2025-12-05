@@ -94,6 +94,32 @@ class FirestoreLogbookRepository(
         }
     }
     
+    override suspend fun updateEntry(entry: LogEntry) {
+        try {
+            entriesCollection
+                .document(entry.id)
+                .set(entry.toFirestoreMap())
+                .await()
+        } catch (e: Exception) {
+            android.util.Log.e("FirestoreLogbookRepository", "Error updating entry: ${e.message}")
+            throw e
+        }
+    }
+    
+    override suspend fun getEntryById(entryId: String): LogEntry? {
+        return try {
+            val doc = entriesCollection.document(entryId).get().await()
+            if (doc.exists()) {
+                doc.toLogEntry()
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FirestoreLogbookRepository", "Error getting entry: ${e.message}")
+            null
+        }
+    }
+    
     override suspend fun deleteEntry(entryId: String) {
         entriesCollection
             .document(entryId)
@@ -280,6 +306,9 @@ class FirestoreLogbookRepository(
                 temperature = (get("temperature") as? Double)?.toFloat(),
                 medicineGiven = getString("medicineGiven"),
                 medicineTimestamp = getLong("medicineTimestamp"),
+                medicineIntervalHours = (get("medicineIntervalHours") as? Long)?.toInt(),
+                nextMedicineTime = getLong("nextMedicineTime"),
+                symptoms = (get("symptoms") as? List<*>)?.mapNotNull { it as? String },
                 amount = (get("amount") as? Double),
                 currency = getString("currency"),
                 mileage = (get("mileage") as? Long)?.toInt(),
@@ -309,6 +338,9 @@ class FirestoreLogbookRepository(
             "temperature" to temperature?.toDouble(),
             "medicineGiven" to medicineGiven,
             "medicineTimestamp" to medicineTimestamp,
+            "medicineIntervalHours" to medicineIntervalHours?.toLong(),
+            "nextMedicineTime" to nextMedicineTime,
+            "symptoms" to symptoms,
             "amount" to amount,
             "currency" to currency,
             "mileage" to mileage?.toLong(),

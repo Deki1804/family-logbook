@@ -41,25 +41,25 @@ fun StatsScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
-        Text(
-            text = "Statistics",
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold
-        )
+            Text(
+                text = "Statistika",
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold
+            )
         
         // Category stats (clickable)
-        Text(
-            text = "Entries by Category",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.SemiBold
-        )
+            Text(
+                text = "Zapisi po kategoriji",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold
+            )
         
         if (categoryCounts.isEmpty()) {
-            Text(
-                text = "No entries yet",
-                fontSize = 14.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-            )
+                Text(
+                    text = "Još nema zapisa",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                )
         } else {
             categoryCounts.forEach { categoryCount ->
                 CategoryStatRow(
@@ -72,18 +72,18 @@ fun StatsScreen(
         Divider()
         
         // Mood stats
-        Text(
-            text = "Mood Overview",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.SemiBold
-        )
+            Text(
+                text = "Pregled raspoloženja",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold
+            )
         
         if (moodCounts.isEmpty()) {
-            Text(
-                text = "No mood data yet",
-                fontSize = 14.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-            )
+                Text(
+                    text = "Još nema podataka o raspoloženju",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                )
         } else {
             moodCounts.forEach { moodCount ->
                 MoodStatRow(moodCount = moodCount)
@@ -94,17 +94,17 @@ fun StatsScreen(
         
         // Temperature History
         Text(
-            text = "Temperature History (Last 7 Days)",
+            text = "Povijest temperature (zadnjih 7 dana)",
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold
         )
         
         if (temperatureHistory.isEmpty()) {
-            Text(
-                text = "No temperature data yet",
-                fontSize = 14.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-            )
+                Text(
+                    text = "Još nema podataka o temperaturi",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                )
         } else {
             SimpleTemperatureChart(temperatureHistory = temperatureHistory)
         }
@@ -113,14 +113,14 @@ fun StatsScreen(
         
         // Feeding History
         Text(
-            text = "Feeding History (Last 7 Days)",
+            text = "Povijest hranjenja bočicom (zadnjih 7 dana)",
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold
         )
         
         if (feedingHistory.isEmpty()) {
             Text(
-                text = "No feeding data yet",
+                text = "Još nema podataka o hranjenju bočicom",
                 fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
             )
@@ -267,21 +267,21 @@ fun CategoryStatRow(
     onClick: () -> Unit = {}
 ) {
     val (label, color) = when (categoryCount.category) {
-        Category.HEALTH -> "Health" to Color(0xFFFF6B6B)
-        Category.SLEEP -> "Sleep" to Color(0xFF4ECDC4)
-        Category.MOOD -> "Mood" to Color(0xFFFFD93D)
-        Category.DEVELOPMENT -> "Development" to Color(0xFF95E1D3)
-        Category.KINDERGARTEN_SCHOOL -> "School" to Color(0xFFAA96DA)
-        Category.SCHOOL -> "School" to Color(0xFFAA96DA)
-        Category.HOME -> "Home" to Color(0xFFF38181)
-        Category.HOUSE -> "House" to Color(0xFFF38181)
-        Category.FEEDING -> "Feeding" to Color(0xFFFFB84D)
+        Category.HEALTH -> "Zdravlje" to Color(0xFFFF6B6B)
+        Category.SLEEP -> "Spavanje" to Color(0xFF4ECDC4)
+        Category.MOOD -> "Raspoloženje" to Color(0xFFFFD93D)
+        Category.DEVELOPMENT -> "Razvoj" to Color(0xFF95E1D3)
+        Category.KINDERGARTEN_SCHOOL -> "Škola" to Color(0xFFAA96DA)
+        Category.SCHOOL -> "Škola" to Color(0xFFAA96DA)
+        Category.HOME -> "Dom" to Color(0xFFF38181)
+        Category.HOUSE -> "Kuća" to Color(0xFFF38181)
+        Category.FEEDING -> "Hranjenje" to Color(0xFFFFB84D)
         Category.AUTO -> "Auto" to Color(0xFFFF6B6B)
-        Category.FINANCE -> "Finance" to Color(0xFF95E1D3)
-        Category.WORK -> "Work" to Color(0xFFAA96DA)
-        Category.SHOPPING -> "Shopping" to Color(0xFFFFB84D)
-        Category.SMART_HOME -> "Smart Home" to Color(0xFF00BCD4)
-        Category.OTHER -> "Other" to Color(0xFFCCCCCC)
+        Category.FINANCE -> "Financije" to Color(0xFF95E1D3)
+        Category.WORK -> "Posao" to Color(0xFFAA96DA)
+        Category.SHOPPING -> "Kupovina" to Color(0xFFFFB84D)
+        Category.SMART_HOME -> "Pametni dom" to Color(0xFF00BCD4)
+        Category.OTHER -> "Ostalo" to Color(0xFFCCCCCC)
     }
     
     Card(

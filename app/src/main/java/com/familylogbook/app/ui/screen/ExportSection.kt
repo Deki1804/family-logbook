@@ -54,16 +54,16 @@ fun ExportSection(viewModel: SettingsViewModel) {
                             val result = viewModel.importFromJson(jsonString)
                             when (result) {
                                 is SettingsViewModel.ImportResult.Success -> {
-                                    importResult = "Successfully imported ${result.childrenAdded} children and ${result.entriesAdded} entries"
+                                    importResult = "Uspješno uvezeno ${result.childrenAdded} djece i ${result.entriesAdded} zapisa"
                                 }
                                 is SettingsViewModel.ImportResult.Error -> {
-                                    importResult = "Error: ${result.message}"
+                                    importResult = "Greška: ${result.message}"
                                 }
                             }
                             showImportDialog = true
                         }
                     } catch (e: Exception) {
-                        importResult = "Error reading file: ${e.message}"
+                        importResult = "Greška pri čitanju datoteke: ${e.message}"
                         showImportDialog = true
                     }
                 }
@@ -84,13 +84,13 @@ fun ExportSection(viewModel: SettingsViewModel) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "Export & Import",
+                text = "Izvoz i uvoz",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
             
             Text(
-                text = "Export your logbook data to JSON or CSV format, or import from JSON backup",
+                text = "Izvezi podatke svog dnevnika u JSON ili CSV formatu, ili uvezi iz JSON sigurnosne kopije",
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
@@ -138,7 +138,7 @@ fun ExportSection(viewModel: SettingsViewModel) {
             ) {
                 Icon(Icons.Default.Upload, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Import from JSON")
+                Text("Uvezi iz JSON")
             }
         }
     }
@@ -147,11 +147,11 @@ fun ExportSection(viewModel: SettingsViewModel) {
     if (showImportDialog) {
         AlertDialog(
             onDismissRequest = { showImportDialog = false },
-            title = { Text("Import Result") },
-            text = { Text(importResult ?: "Unknown result") },
+            title = { Text("Rezultat uvoza") },
+            text = { Text(importResult ?: "Nepoznat rezultat") },
             confirmButton = {
                 TextButton(onClick = { showImportDialog = false }) {
-                    Text("OK")
+                    Text("U redu")
                 }
             }
         )
@@ -176,12 +176,12 @@ private fun exportAndShare(context: Context, content: String, filename: String, 
         val shareIntent = Intent(Intent.ACTION_SEND).apply {
             type = mimeType
             putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_SUBJECT, "Family Logbook Export")
-            putExtra(Intent.EXTRA_TEXT, "Family Logbook data export")
+            putExtra(Intent.EXTRA_SUBJECT, "Izvoz Obiteljskog dnevnika")
+            putExtra(Intent.EXTRA_TEXT, "Izvoz podataka Obiteljskog dnevnika")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         
-        context.startActivity(Intent.createChooser(shareIntent, "Export Family Logbook"))
+        context.startActivity(Intent.createChooser(shareIntent, "Izvezi Obiteljski dnevnik"))
     } catch (e: Exception) {
         e.printStackTrace()
     }

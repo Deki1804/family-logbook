@@ -118,7 +118,6 @@ cd "Family Logbook"
 1. Kreiraj Firebase projekt na [Firebase Console](https://console.firebase.google.com)
 2. Dodaj Android app u Firebase projekt
 3. Preuzmi `google-services.json` i stavi ga u `app/` folder
-4. Detaljne upute: [FIREBASE_SETUP.md](FIREBASE_SETUP.md) ili [FIREBASE_QUICK_START.md](FIREBASE_QUICK_START.md)
 
 **Opcija B: Koristiš demo mode (bez Firebase)**
 
@@ -129,8 +128,6 @@ cd "Family Logbook"
 
 Kopiraj pravila iz `firestore.rules` u Firebase Console → Firestore Database → Rules.
 
-Detaljno objašnjenje: [FIRESTORE_SECURITY_RULES.md](FIRESTORE_SECURITY_RULES.md)
-
 ### 5. Pokreni aplikaciju
 
 - Poveži Android uređaj ili pokreni emulator
@@ -138,11 +135,11 @@ Detaljno objašnjenje: [FIRESTORE_SECURITY_RULES.md](FIRESTORE_SECURITY_RULES.md
 
 ## 📚 Dokumentacija
 
-- **[PROJECT_STATUS.md](PROJECT_STATUS.md)** - Kompletan pregled projekta, roadmap, status
 - **[TODO_v1.0.md](TODO_v1.0.md)** - Konkretne akcije i checklist za v1.0
-- **[QUICK_STATUS.md](QUICK_STATUS.md)** - Brzi pregled trenutnog stanja
-- **[FIRESTORE_SECURITY_RULES.md](FIRESTORE_SECURITY_RULES.md)** - Objašnjenje sigurnosnih pravila
-- **[MIPMAP_SETUP_INSTRUCTIONS.md](MIPMAP_SETUP_INSTRUCTIONS.md)** - Upute za postavljanje ikona
+- **[BUILD_APK.md](BUILD_APK.md)** - Upute za kreiranje APK-a
+- **[PRIVACY_POLICY.md](PRIVACY_POLICY.md)** - Pravila privatnosti
+- **[TERMS_OF_SERVICE.md](TERMS_OF_SERVICE.md)** - Uvjeti korištenja
+- **[GDPR_COMPLIANCE.md](GDPR_COMPLIANCE.md)** - GDPR usklađenost
 
 ## 🔐 Sigurnost
 
