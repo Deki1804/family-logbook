@@ -8,7 +8,12 @@ import com.familylogbook.app.domain.model.FeedingType
 import com.familylogbook.app.domain.model.LogEntry
 import com.familylogbook.app.domain.model.Mood
 import com.familylogbook.app.domain.repository.LogbookRepository
+import com.familylogbook.app.data.util.RetryHelper
+import com.familylogbook.app.ui.util.ErrorHandler
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import kotlinx.coroutines.channels.awaitClose
@@ -18,8 +23,8 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.tasks.await
 
 class FirestoreLogbookRepository(
-    private val userId: String, // Required: user ID from Firebase Auth
-    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
+    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    private val auth: FirebaseAuth = FirebaseAuth.getInstance()
 ) : LogbookRepository {
     
     companion object {
@@ -30,36 +35,87 @@ class FirestoreLogbookRepository(
         private const val COLLECTION_ENTRIES = "entries"
     }
     
-    // User-scoped collection paths
-    private val childrenCollection = firestore
-        .collection(COLLECTION_USERS)
-        .document(userId)
-        .collection(COLLECTION_CHILDREN)
+    /**
+     * Gets the current user's ID dynamically from FirebaseAuth.
+     * This ensures the repository always uses the correct userId even after sign-in changes.
+     */
+    private fun getCurrentUserId(): String {
+        val currentUser = auth.currentUser
+        if (currentUser == null) {
+            throw IllegalStateException("User not authenticated. Please sign in first.")
+        }
+        return currentUser.uid
+    }
     
-    private val personsCollection = firestore
-        .collection(COLLECTION_USERS)
-        .document(userId)
-        .collection(COLLECTION_PERSONS)
+    // User-scoped collection paths - now dynamically generated
+    // These methods call getCurrentUserId() which throws if user is not authenticated
+    private fun getChildrenCollection(): CollectionReference {
+        val userId = getCurrentUserId()
+        android.util.Log.d("FirestoreLogbookRepository", "getChildrenCollection - userId: $userId")
+        return firestore
+            .collection(COLLECTION_USERS)
+            .document(userId)
+            .collection(COLLECTION_CHILDREN)
+    }
     
-    private val entitiesCollection = firestore
-        .collection(COLLECTION_USERS)
-        .document(userId)
-        .collection(COLLECTION_ENTITIES)
+    private fun getPersonsCollection(): CollectionReference {
+        val userId = getCurrentUserId()
+        android.util.Log.d("FirestoreLogbookRepository", "getPersonsCollection - userId: $userId")
+        return firestore
+            .collection(COLLECTION_USERS)
+            .document(userId)
+            .collection(COLLECTION_PERSONS)
+    }
     
-    private val entriesCollection = firestore
-        .collection(COLLECTION_USERS)
-        .document(userId)
-        .collection(COLLECTION_ENTRIES)
+    private fun getEntitiesCollection(): CollectionReference {
+        val userId = getCurrentUserId()
+        android.util.Log.d("FirestoreLogbookRepository", "getEntitiesCollection - userId: $userId")
+        return firestore
+            .collection(COLLECTION_USERS)
+            .document(userId)
+            .collection(COLLECTION_ENTITIES)
+    }
+    
+    private fun getEntriesCollection(): CollectionReference {
+        val userId = getCurrentUserId()
+        android.util.Log.d("FirestoreLogbookRepository", "getEntriesCollection - userId: $userId")
+        return firestore
+            .collection(COLLECTION_USERS)
+            .document(userId)
+            .collection(COLLECTION_ENTRIES)
+    }
     
     // ========== ENTRIES ==========
     
     override fun getAllEntries(): Flow<List<LogEntry>> = callbackFlow {
-        val listener = entriesCollection
+        // Log authentication status and get collection once
+        val currentUser = auth.currentUser
+        val currentUserId = try { 
+            getCurrentUserId() 
+        } catch (e: Exception) { 
+            android.util.Log.e("FirestoreLogbookRepository", "Error getting user ID: ${e.message}")
+            null
+        }
+        
+        android.util.Log.d("FirestoreLogbookRepository", "getAllEntries - userId: $currentUserId, auth uid: ${currentUser?.uid}, isAnonymous: ${currentUser?.isAnonymous}")
+        
+        if (currentUserId == null || currentUser == null) {
+            android.util.Log.e("FirestoreLogbookRepository", "User not authenticated")
+            trySend(emptyList())
+            return@callbackFlow
+        }
+        
+        // Get collection reference once to avoid multiple getCurrentUserId() calls
+        val entriesCollectionRef = getEntriesCollection()
+        val listener = entriesCollectionRef
             .orderBy("timestamp", Query.Direction.DESCENDING)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     // Log error but don't crash - return empty list
                     android.util.Log.e("FirestoreLogbookRepository", "Error loading entries: ${error.message}")
+                    if (error is com.google.firebase.firestore.FirebaseFirestoreException) {
+                        android.util.Log.e("FirestoreLogbookRepository", "Firestore error code: ${error.code}, currentUser: ${auth.currentUser?.uid}")
+                    }
                     trySend(emptyList())
                     return@addSnapshotListener
                 }
@@ -83,32 +139,73 @@ class FirestoreLogbookRepository(
     }
     
     override suspend fun addEntry(entry: LogEntry) {
-        try {
-            entriesCollection
-                .document(entry.id)
-                .set(entry.toFirestoreMap())
-                .await()
-        } catch (e: Exception) {
-            android.util.Log.e("FirestoreLogbookRepository", "Error adding entry: ${e.message}")
-            throw e // Re-throw so ViewModel can handle it
+        RetryHelper.retryWithBackoff(
+            maxRetries = 3,
+            initialDelayMs = 1000,
+            retryCondition = { exception ->
+                // Retry on network errors and temporary Firestore errors
+                ErrorHandler.isNetworkError(exception) ||
+                (exception is FirebaseFirestoreException && 
+                 (exception.code == FirebaseFirestoreException.Code.UNAVAILABLE ||
+                  exception.code == FirebaseFirestoreException.Code.DEADLINE_EXCEEDED ||
+                  exception.code == FirebaseFirestoreException.Code.RESOURCE_EXHAUSTED))
+            }
+        ) {
+            try {
+                // Verify user is authenticated and get current userId
+                val currentUserId = getCurrentUserId()
+                val currentUser = auth.currentUser
+                android.util.Log.d("FirestoreLogbookRepository", "Adding entry as user: $currentUserId (authenticated: ${currentUser?.isAnonymous})")
+                
+                getEntriesCollection()
+                    .document(entry.id)
+                    .set(entry.toFirestoreMap())
+                    .await()
+            } catch (e: FirebaseFirestoreException) {
+                android.util.Log.e("FirestoreLogbookRepository", "Firestore error adding entry: ${e.code} - ${e.message}", e)
+                // Re-throw Firestore exceptions as-is for proper error handling
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.e("FirestoreLogbookRepository", "Error adding entry: ${e.message}", e)
+                throw e // Re-throw so ViewModel can handle it
+            }
         }
     }
     
     override suspend fun updateEntry(entry: LogEntry) {
-        try {
-            entriesCollection
-                .document(entry.id)
-                .set(entry.toFirestoreMap())
-                .await()
-        } catch (e: Exception) {
-            android.util.Log.e("FirestoreLogbookRepository", "Error updating entry: ${e.message}")
-            throw e
+        RetryHelper.retryWithBackoff(
+            maxRetries = 3,
+            initialDelayMs = 1000,
+            retryCondition = { exception ->
+                // Retry on network errors and temporary Firestore errors
+                ErrorHandler.isNetworkError(exception) ||
+                (exception is FirebaseFirestoreException && 
+                 (exception.code == FirebaseFirestoreException.Code.UNAVAILABLE ||
+                  exception.code == FirebaseFirestoreException.Code.DEADLINE_EXCEEDED ||
+                  exception.code == FirebaseFirestoreException.Code.RESOURCE_EXHAUSTED))
+            }
+        ) {
+            try {
+                // Verify user is authenticated - getCurrentUserId() will throw if not
+                getCurrentUserId()
+                
+                getEntriesCollection()
+                    .document(entry.id)
+                    .set(entry.toFirestoreMap())
+                    .await()
+            } catch (e: FirebaseFirestoreException) {
+                android.util.Log.e("FirestoreLogbookRepository", "Firestore error updating entry: ${e.code} - ${e.message}", e)
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.e("FirestoreLogbookRepository", "Error updating entry: ${e.message}", e)
+                throw e
+            }
         }
     }
     
     override suspend fun getEntryById(entryId: String): LogEntry? {
         return try {
-            val doc = entriesCollection.document(entryId).get().await()
+            val doc = getEntriesCollection().document(entryId).get().await()
             if (doc.exists()) {
                 doc.toLogEntry()
             } else {
@@ -121,7 +218,7 @@ class FirestoreLogbookRepository(
     }
     
     override suspend fun deleteEntry(entryId: String) {
-        entriesCollection
+        getEntriesCollection()
             .document(entryId)
             .delete()
             .await()
@@ -130,11 +227,32 @@ class FirestoreLogbookRepository(
     // ========== CHILDREN ==========
     
     override fun getAllChildren(): Flow<List<Child>> = callbackFlow {
-        val listener = childrenCollection
+        // Log authentication status and get collection once
+        val currentUser = auth.currentUser
+        val currentUserId = try { 
+            getCurrentUserId() 
+        } catch (e: Exception) { 
+            android.util.Log.e("FirestoreLogbookRepository", "Error getting user ID: ${e.message}")
+            null
+        }
+        
+        android.util.Log.d("FirestoreLogbookRepository", "getAllChildren - userId: $currentUserId, auth uid: ${currentUser?.uid}")
+        
+        if (currentUserId == null || currentUser == null) {
+            android.util.Log.e("FirestoreLogbookRepository", "User not authenticated")
+            trySend(emptyList())
+            return@callbackFlow
+        }
+        
+        // Get collection reference once to avoid multiple getCurrentUserId() calls
+        val childrenCollectionRef = getChildrenCollection()
+        val listener = childrenCollectionRef
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    // Log error but don't crash - return empty list
                     android.util.Log.e("FirestoreLogbookRepository", "Error loading children: ${error.message}")
+                    if (error is com.google.firebase.firestore.FirebaseFirestoreException) {
+                        android.util.Log.e("FirestoreLogbookRepository", "Firestore error code: ${error.code}, currentUser: ${auth.currentUser?.uid}")
+                    }
                     trySend(emptyList())
                     return@addSnapshotListener
                 }
@@ -158,21 +276,21 @@ class FirestoreLogbookRepository(
     }
     
     override suspend fun addChild(child: Child) {
-        childrenCollection
+        getChildrenCollection()
             .document(child.id)
             .set(child.toFirestoreMap())
             .await()
     }
     
     override suspend fun deleteChild(childId: String) {
-        childrenCollection
+        getChildrenCollection()
             .document(childId)
             .delete()
             .await()
     }
     
     override suspend fun getChildById(childId: String): Child? {
-        val doc = childrenCollection
+        val doc = getChildrenCollection()
             .document(childId)
             .get()
             .await()
@@ -183,10 +301,32 @@ class FirestoreLogbookRepository(
     // ========== PERSONS ==========
     
     override fun getAllPersons(): Flow<List<Person>> = callbackFlow {
-        val listener = personsCollection
+        // Log authentication status and get collection once
+        val currentUser = auth.currentUser
+        val currentUserId = try { 
+            getCurrentUserId() 
+        } catch (e: Exception) { 
+            android.util.Log.e("FirestoreLogbookRepository", "Error getting user ID: ${e.message}")
+            null
+        }
+        
+        android.util.Log.d("FirestoreLogbookRepository", "getAllPersons - userId: $currentUserId, auth uid: ${currentUser?.uid}")
+        
+        if (currentUserId == null || currentUser == null) {
+            android.util.Log.e("FirestoreLogbookRepository", "User not authenticated")
+            trySend(emptyList())
+            return@callbackFlow
+        }
+        
+        // Get collection reference once to avoid multiple getCurrentUserId() calls
+        val personsCollectionRef = getPersonsCollection()
+        val listener = personsCollectionRef
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     android.util.Log.e("FirestoreLogbookRepository", "Error loading persons: ${error.message}")
+                    if (error is com.google.firebase.firestore.FirebaseFirestoreException) {
+                        android.util.Log.e("FirestoreLogbookRepository", "Firestore error code: ${error.code}, currentUser: ${auth.currentUser?.uid}")
+                    }
                     trySend(emptyList())
                     return@addSnapshotListener
                 }
@@ -210,21 +350,21 @@ class FirestoreLogbookRepository(
     }
     
     override suspend fun addPerson(person: Person) {
-        personsCollection
+        getPersonsCollection()
             .document(person.id)
             .set(person.toFirestoreMap())
             .await()
     }
     
     override suspend fun deletePerson(personId: String) {
-        personsCollection
+        getPersonsCollection()
             .document(personId)
             .delete()
             .await()
     }
     
     override suspend fun getPersonById(personId: String): Person? {
-        val doc = personsCollection
+        val doc = getPersonsCollection()
             .document(personId)
             .get()
             .await()
@@ -235,10 +375,32 @@ class FirestoreLogbookRepository(
     // ========== ENTITIES ==========
     
     override fun getAllEntities(): Flow<List<Entity>> = callbackFlow {
-        val listener = entitiesCollection
+        // Log authentication status and get collection once
+        val currentUser = auth.currentUser
+        val currentUserId = try { 
+            getCurrentUserId() 
+        } catch (e: Exception) { 
+            android.util.Log.e("FirestoreLogbookRepository", "Error getting user ID: ${e.message}")
+            null
+        }
+        
+        android.util.Log.d("FirestoreLogbookRepository", "getAllEntities - userId: $currentUserId, auth uid: ${currentUser?.uid}")
+        
+        if (currentUserId == null || currentUser == null) {
+            android.util.Log.e("FirestoreLogbookRepository", "User not authenticated")
+            trySend(emptyList())
+            return@callbackFlow
+        }
+        
+        // Get collection reference once to avoid multiple getCurrentUserId() calls
+        val entitiesCollectionRef = getEntitiesCollection()
+        val listener = entitiesCollectionRef
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     android.util.Log.e("FirestoreLogbookRepository", "Error loading entities: ${error.message}")
+                    if (error is com.google.firebase.firestore.FirebaseFirestoreException) {
+                        android.util.Log.e("FirestoreLogbookRepository", "Firestore error code: ${error.code}, currentUser: ${auth.currentUser?.uid}")
+                    }
                     trySend(emptyList())
                     return@addSnapshotListener
                 }
@@ -262,21 +424,21 @@ class FirestoreLogbookRepository(
     }
     
     override suspend fun addEntity(entity: Entity) {
-        entitiesCollection
+        getEntitiesCollection()
             .document(entity.id)
             .set(entity.toFirestoreMap())
             .await()
     }
     
     override suspend fun deleteEntity(entityId: String) {
-        entitiesCollection
+        getEntitiesCollection()
             .document(entityId)
             .delete()
             .await()
     }
     
     override suspend fun getEntityById(entityId: String): Entity? {
-        val doc = entitiesCollection
+        val doc = getEntitiesCollection()
             .document(entityId)
             .get()
             .await()
@@ -309,6 +471,11 @@ class FirestoreLogbookRepository(
                 medicineIntervalHours = (get("medicineIntervalHours") as? Long)?.toInt(),
                 nextMedicineTime = getLong("nextMedicineTime"),
                 symptoms = (get("symptoms") as? List<*>)?.mapNotNull { it as? String },
+                shoppingItems = (get("shoppingItems") as? List<*>)?.mapNotNull { it as? String },
+                checkedShoppingItems = (get("checkedShoppingItems") as? List<*>)?.mapNotNull { it as? String }?.toSet(),
+                vaccinationName = getString("vaccinationName"),
+                nextVaccinationDate = getLong("nextVaccinationDate"),
+                nextVaccinationMessage = getString("nextVaccinationMessage"),
                 amount = (get("amount") as? Double),
                 currency = getString("currency"),
                 mileage = (get("mileage") as? Long)?.toInt(),
@@ -341,6 +508,11 @@ class FirestoreLogbookRepository(
             "medicineIntervalHours" to medicineIntervalHours?.toLong(),
             "nextMedicineTime" to nextMedicineTime,
             "symptoms" to symptoms,
+            "shoppingItems" to shoppingItems,
+            "checkedShoppingItems" to (checkedShoppingItems?.toList() ?: emptyList()),
+            "vaccinationName" to vaccinationName,
+            "nextVaccinationDate" to nextVaccinationDate,
+            "nextVaccinationMessage" to nextVaccinationMessage,
             "amount" to amount,
             "currency" to currency,
             "mileage" to mileage?.toLong(),

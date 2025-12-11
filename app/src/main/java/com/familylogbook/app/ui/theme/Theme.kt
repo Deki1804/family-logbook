@@ -31,7 +31,7 @@ private val LightColorScheme = lightColorScheme(
 )
 
 @Composable
-fun FamilyLogbookTheme(
+fun FamilyOSTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = true,
     content: @Composable () -> Unit

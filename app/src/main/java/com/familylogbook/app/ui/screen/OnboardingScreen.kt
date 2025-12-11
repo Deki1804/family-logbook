@@ -1,13 +1,16 @@
 package com.familylogbook.app.ui.screen
 
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material3.*
@@ -55,15 +58,8 @@ fun OnboardingScreen(
     var showAddPersonForm by remember { mutableStateOf(false) }
     var showAddEntityForm by remember { mutableStateOf(false) }
     
-    // Check if user has at least one person - if yes, complete onboarding
-    LaunchedEffect(persons) {
-        if (persons.isNotEmpty() && pagerState.currentPage < 3) {
-            // User added a person, move to completion page
-            scope.launch {
-                pagerState.animateScrollToPage(3)
-            }
-        }
-    }
+    // Check if user has at least one person - if yes, enable completion
+    // Don't auto-navigate to avoid disrupting user flow
     
     Column(
         modifier = Modifier
@@ -82,7 +78,7 @@ fun OnboardingScreen(
                 val sharedPrefs = context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
                 sharedPrefs.edit()
                     .putBoolean("onboarding_completed", true)
-                    .apply()
+                    .commit() // Use commit() instead of apply() for immediate write
                 onSkip()
             }) {
                 Text("Preskoči", fontSize = 14.sp)
@@ -92,7 +88,9 @@ fun OnboardingScreen(
         // Pager
         HorizontalPager(
             state = pagerState,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(0.dp))
         ) { page ->
             when (page) {
                 0 -> OnboardingWelcomePage()
@@ -154,20 +152,20 @@ fun OnboardingScreen(
             
             // Next/Complete button
             Button(
-                        onClick = {
-                            scope.launch {
-                                if (pagerState.currentPage < 3) {
-                                    pagerState.animateScrollToPage(pagerState.currentPage + 1)
-                                } else {
-                                    // Mark onboarding as completed
-                                    val sharedPrefs = context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
-                                    sharedPrefs.edit()
-                                        .putBoolean("onboarding_completed", true)
-                                        .apply()
-                                    onComplete()
-                                }
-                            }
-                        },
+                onClick = {
+                    scope.launch {
+                        if (pagerState.currentPage < 3) {
+                            pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                        } else {
+                            // Mark onboarding as completed BEFORE navigation
+                            val sharedPrefs = context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
+                            sharedPrefs.edit()
+                                .putBoolean("onboarding_completed", true)
+                                .commit() // Use commit() instead of apply() for immediate write
+                            onComplete()
+                        }
+                    }
+                },
                 enabled = when (pagerState.currentPage) {
                     1 -> persons.isNotEmpty() || showAddPersonForm
                     2 -> true // Entity is optional
@@ -232,12 +230,18 @@ fun OnboardingAddPersonPage(
 ) {
     val scope = rememberCoroutineScope()
     
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .clip(RoundedCornerShape(0.dp))
     ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 32.dp, vertical = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
         Text(
             text = "👤",
             fontSize = 80.sp
@@ -273,7 +277,9 @@ fun OnboardingAddPersonPage(
                 }
             } else {
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .wrapContentHeight(),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant
                     )
@@ -295,7 +301,9 @@ fun OnboardingAddPersonPage(
                         Text("Tip", fontSize = 14.sp, fontWeight = FontWeight.Medium)
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(0.dp))
                         ) {
                             listOf(PersonType.CHILD, PersonType.PARENT, PersonType.OTHER_FAMILY_MEMBER).forEach { type ->
                                 FilterChip(
@@ -320,29 +328,29 @@ fun OnboardingAddPersonPage(
                         Text("Emoji", fontSize = 14.sp, fontWeight = FontWeight.Medium)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf("👶", "👧", "👦", "👨", "👩", "🧒").forEach { emoji ->
-                                Surface(
+                                val isSelected = newPersonEmoji == emoji
+                                Box(
                                     modifier = Modifier
                                         .size(48.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (isSelected) {
+                                                MaterialTheme.colorScheme.primaryContainer
+                                            } else {
+                                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                            }
+                                        )
                                         .then(
-                                            if (newPersonEmoji == emoji) {
-                                                Modifier.background(
-                                                    MaterialTheme.colorScheme.primaryContainer,
-                                                    CircleShape
-                                                )
+                                            if (isSelected) {
+                                                Modifier.border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
                                             } else {
                                                 Modifier
                                             }
-                                        ),
-                                    shape = CircleShape,
-                                    color = Color.Transparent,
-                                    onClick = { settingsViewModel.setNewPersonEmoji(emoji) }
+                                        )
+                                        .clickable { settingsViewModel.setNewPersonEmoji(emoji) },
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Box(
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(text = emoji, fontSize = 24.sp)
-                                    }
+                                    Text(text = emoji, fontSize = 24.sp)
                                 }
                             }
                         }
@@ -367,6 +375,9 @@ fun OnboardingAddPersonPage(
                         ) {
                             Text("Odustani")
                         }
+                        
+                        // Dodatni spacer na dnu da se osigura da se sve vidi
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
             }
@@ -398,6 +409,7 @@ fun OnboardingAddPersonPage(
                 }
             }
         }
+        }
     }
 }
 
@@ -414,12 +426,18 @@ fun OnboardingAddEntityPage(
 ) {
     val scope = rememberCoroutineScope()
     
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .clip(RoundedCornerShape(0.dp))
     ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
         Text(
             text = "🏠",
             fontSize = 80.sp
@@ -464,7 +482,9 @@ fun OnboardingAddEntityPage(
                 }
             } else {
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp)),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant
                     )
@@ -472,7 +492,8 @@ fun OnboardingAddEntityPage(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
+                            .padding(16.dp)
+                            .clip(RoundedCornerShape(16.dp)),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         OutlinedTextField(
@@ -515,29 +536,29 @@ fun OnboardingAddEntityPage(
                         Text("Emoji", fontSize = 14.sp, fontWeight = FontWeight.Medium)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf("🚗", "🏠", "💰", "🏥", "🔧").forEach { emoji ->
-                                Surface(
+                                val isSelected = newEntityEmoji == emoji
+                                Box(
                                     modifier = Modifier
                                         .size(48.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (isSelected) {
+                                                MaterialTheme.colorScheme.primaryContainer
+                                            } else {
+                                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                            }
+                                        )
                                         .then(
-                                            if (newEntityEmoji == emoji) {
-                                                Modifier.background(
-                                                    MaterialTheme.colorScheme.primaryContainer,
-                                                    CircleShape
-                                                )
+                                            if (isSelected) {
+                                                Modifier.border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
                                             } else {
                                                 Modifier
                                             }
-                                        ),
-                                    shape = CircleShape,
-                                    color = Color.Transparent,
-                                    onClick = { settingsViewModel.setNewEntityEmoji(emoji) }
+                                        )
+                                        .clickable { settingsViewModel.setNewEntityEmoji(emoji) },
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Box(
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(text = emoji, fontSize = 24.sp)
-                                    }
+                                    Text(text = emoji, fontSize = 24.sp)
                                 }
                             }
                         }
@@ -592,6 +613,7 @@ fun OnboardingAddEntityPage(
                     }
                 }
             }
+        }
         }
     }
 }

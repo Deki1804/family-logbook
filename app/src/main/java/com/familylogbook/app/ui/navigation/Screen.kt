@@ -32,5 +32,12 @@ sealed class Screen(val route: String) {
             fun createRoute(entityId: String) = "entity_profile/$entityId"
         }
     }
+
+    data class EntryDetail(val entryId: String) : Screen("entry_detail/{entryId}") {
+        companion object {
+            const val ROUTE = "entry_detail/{entryId}"
+            fun createRoute(entryId: String) = "entry_detail/$entryId"
+        }
+    }
 }
 

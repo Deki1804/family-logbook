@@ -3,6 +3,7 @@ package com.familylogbook.app.data.auth
 import com.google.firebase.auth.AuthCredential
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.tasks.await
 
@@ -94,17 +95,35 @@ class AuthManager(
     
     /**
      * Signs in with Google credential.
-     * For now, this is a placeholder - Google Sign-In requires additional setup.
+     * Handles both new account creation and existing account sign-in.
+     * If account already exists with Google provider, Firebase will automatically sign in.
+     * If account exists with different provider, throws FirebaseAuthException with ERROR_ACCOUNT_EXISTS_WITH_DIFFERENT_CREDENTIAL.
      */
     suspend fun signInWithGoogleCredential(credential: AuthCredential): FirebaseUser {
         val currentUser = auth.currentUser
         
         return if (currentUser != null && currentUser.isAnonymous) {
             // Link Google credential to anonymous account
-            val result = currentUser.linkWithCredential(credential).await()
-            result.user ?: throw IllegalStateException("Failed to link Google account")
+            try {
+                val result = currentUser.linkWithCredential(credential).await()
+                result.user ?: throw IllegalStateException("Failed to link Google account")
+            } catch (e: FirebaseAuthException) {
+                // If linking fails because account exists, try to sign in directly
+                if (e.errorCode == "ERROR_CREDENTIAL_ALREADY_IN_USE" || 
+                    e.errorCode == "ERROR_EMAIL_ALREADY_IN_USE") {
+                    // Account already exists, sign in with credential instead
+                    val result = auth.signInWithCredential(credential).await()
+                    result.user ?: throw IllegalStateException("Failed to sign in with Google")
+                } else {
+                    throw e
+                }
+            }
         } else {
-            // Sign in with Google
+            // Sign in with Google (or create new account if doesn't exist)
+            // Firebase automatically handles both cases:
+            // - If account exists with Google provider, signs in
+            // - If account doesn't exist, creates new account
+            // - If account exists with different provider, throws ERROR_ACCOUNT_EXISTS_WITH_DIFFERENT_CREDENTIAL
             val result = auth.signInWithCredential(credential).await()
             result.user ?: throw IllegalStateException("Failed to sign in with Google")
         }
@@ -153,6 +172,7 @@ class AuthManager(
     /**
      * Changes the email address for the current user.
      * Requires re-authentication for security.
+     * Sends verification email to new address - email change only takes effect after verification.
      * 
      * @param currentPassword Current password for verification
      * @param newEmail New email address
@@ -168,8 +188,9 @@ class AuthManager(
         val credential = EmailAuthProvider.getCredential(currentEmail, currentPassword)
         currentUser.reauthenticate(credential).await()
         
-        // Change email
-        currentUser.updateEmail(newEmail).await()
+        // Change email using new API (verifyBeforeUpdateEmail instead of deprecated updateEmail)
+        // This sends a verification email to the new address
+        currentUser.verifyBeforeUpdateEmail(newEmail).await()
     }
     
     /**

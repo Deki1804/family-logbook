@@ -2,14 +2,36 @@ package com.familylogbook.app.domain.classifier
 
 import com.familylogbook.app.domain.model.AdviceTemplate
 import com.familylogbook.app.domain.model.Category
+import com.familylogbook.app.data.shopping.GoogleCustomSearchService
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Rule-based engine that maps symptoms and keywords to parenting advice templates.
  * This is NOT medical advice - just general parenting tips.
+ * 
+ * Also handles shopping deals via Google Custom Search API.
  */
 class AdviceEngine {
     
     private val adviceTemplates = createAdviceTemplates()
+    
+    // Google Custom Search Service for shopping deals
+    private val customSearchService: GoogleCustomSearchService? by lazy {
+        try {
+            val apiKey = com.familylogbook.app.BuildConfig.GOOGLE_CSE_API_KEY
+            val engineId = com.familylogbook.app.BuildConfig.GOOGLE_CSE_ENGINE_ID
+            if (apiKey.isNotEmpty() && engineId.isNotEmpty()) {
+                GoogleCustomSearchService(apiKey, engineId)
+            } else {
+                android.util.Log.w("AdviceEngine", "Google Custom Search API key or Engine ID not configured")
+                null
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("AdviceEngine", "Failed to initialize Google Custom Search Service: ${e.message}")
+            null
+        }
+    }
     
     /**
      * Finds relevant advice for a log entry based on its text and category.
@@ -26,15 +48,8 @@ class AdviceEngine {
     fun findAdvice(text: String, category: Category, symptoms: List<String>?): AdviceTemplate? {
         val lowerText = text.lowercase()
         
-        // Check each template's keywords
-        for (template in adviceTemplates) {
-            if (template.relatedKeywords.any { keyword -> lowerText.contains(keyword) }) {
-                return template
-            }
-        }
-        
-        // Category-based fallback
-        return when (category) {
+        // FIRST check category-based advice (more reliable)
+        val categoryAdvice = when (category) {
             Category.HEALTH -> findHealthAdvice(lowerText, symptoms)
             Category.FEEDING -> findFeedingAdvice(lowerText)
             Category.SLEEP -> findSleepAdvice(lowerText)
@@ -47,6 +62,38 @@ class AdviceEngine {
             Category.SMART_HOME -> findSmartHomeAdvice(lowerText)
             else -> null
         }
+        
+        // Return category-based advice if found (prioritize category over keyword matching)
+        if (categoryAdvice != null) {
+            return categoryAdvice
+        }
+        
+        // Only check keywords if no category advice found AND category allows it
+        // Don't show feeding/health advice for shopping lists or other non-relevant categories
+        val allowedAdviceIds = when (category) {
+            Category.SHOPPING -> listOf("shopping_list") // Only shopping advice for shopping category
+            Category.OTHER -> emptyList() // No advice for OTHER category to avoid false positives
+            Category.WORK -> listOf("work_reminder") // Only work advice for WORK category
+            else -> null // Allow all for other categories (but exclude work_reminder)
+        }
+        
+        // Check keyword-based templates (only if category allows it)
+        for (template in adviceTemplates) {
+            // Skip if category restricts which advice types are allowed
+            if (allowedAdviceIds != null && template.id !in allowedAdviceIds) {
+                continue
+            }
+            // IMPORTANT: Never show work_reminder advice via keyword matching for non-WORK categories
+            // Work advice should ONLY appear for Category.WORK entries
+            if (template.id == "work_reminder" && category != Category.WORK) {
+                continue
+            }
+            if (template.relatedKeywords.any { keyword -> lowerText.contains(keyword) }) {
+                return template
+            }
+        }
+        
+        return null
     }
     
     private fun findHealthAdvice(text: String, symptoms: List<String>? = null): AdviceTemplate? {
@@ -76,7 +123,7 @@ class AdviceEngine {
         return null
     }
     
-    private fun findFeedingAdvice(text: String): AdviceTemplate? {
+    private fun findFeedingAdvice(@Suppress("UNUSED_PARAMETER") text: String): AdviceTemplate? {
         return adviceTemplates.find { it.id == "feeding" }
     }
     
@@ -114,20 +161,323 @@ class AdviceEngine {
         return adviceTemplates.find { it.id == "house_general" }
     }
     
-    private fun findFinanceAdvice(text: String): AdviceTemplate? {
+    private fun findFinanceAdvice(@Suppress("UNUSED_PARAMETER") text: String): AdviceTemplate? {
         return adviceTemplates.find { it.id == "finance_bill" }
     }
     
-    private fun findWorkAdvice(text: String): AdviceTemplate? {
+    private fun findWorkAdvice(@Suppress("UNUSED_PARAMETER") text: String): AdviceTemplate? {
         return adviceTemplates.find { it.id == "work_reminder" }
     }
     
-    private fun findShoppingAdvice(text: String): AdviceTemplate? {
-        return adviceTemplates.find { it.id == "shopping_list" }
+    private fun findShoppingAdvice(@Suppress("UNUSED_PARAMETER") text: String): AdviceTemplate? {
+        // Return null for shopping - we'll use async findShoppingDealsAdvice instead
+        // This prevents showing generic shopping list advice
+        return null
     }
     
-    private fun findSmartHomeAdvice(text: String): AdviceTemplate? {
+    /**
+     * Finds shopping deals advice for a shopping list entry.
+     * This is an async operation that searches for deals using Google Custom Search API.
+     * 
+     * @param text Shopping list text (e.g., "jaja, kruh, mlijeko")
+     * @param location Optional location for better results (e.g., "Umag")
+     * @return AdviceTemplate with shopping deals if found, null otherwise
+     */
+    suspend fun findShoppingDealsAdvice(
+        text: String,
+        location: String = "Hrvatska"
+    ): AdviceTemplate? = withContext(Dispatchers.IO) {
+        val service = customSearchService ?: return@withContext null
+        
+        // Extract shopping items from text
+        val items = extractShoppingItems(text)
+        if (items.isEmpty()) {
+            return@withContext null
+        }
+        
+        // Search for deals for each item
+        val allDeals = mutableListOf<GoogleCustomSearchService.ShoppingDeal>()
+        
+        for (item in items.take(5)) { // Limit to 5 items to avoid too many API calls
+            try {
+                val deals = service.searchDeals(item, location)
+                allDeals.addAll(deals)
+            } catch (e: Exception) {
+                android.util.Log.e("AdviceEngine", "Error searching deals for $item: ${e.message}")
+            }
+        }
+        
+        // If no deals found, return null (don't show advice)
+        if (allDeals.isEmpty()) {
+            return@withContext null
+        }
+        
+        // Group deals by product and get best deal per product (max 1 per product)
+        val dealsByProduct = allDeals.groupBy { it.productName }
+        
+        // Create tips from deals - format: "artikal – trgovina – cijena"
+        val tips = mutableListOf<String>()
+        val foundProducts = mutableListOf<String>()
+        
+        dealsByProduct.forEach { (product, deals) ->
+            // Filter and sort deals by quality (best deals first)
+            // IMPORTANT: Only show deals that are ACTUALLY on sale (have discount or explicit "akcija" mention)
+            val goodDeals = deals
+                .filter { deal -> 
+                    isGoodDeal(deal, product) && isActuallyOnSale(deal)
+                }
+                .sortedByDescending { deal -> calculateDealScore(deal, product) }
+            
+            // Take the best deal (highest score)
+            val bestDeal = goodDeals.firstOrNull() ?: return@forEach
+            
+            foundProducts.add(product)
+            
+            // Format: "artikal – trgovina – cijena"
+            val storeInfo = bestDeal.storeName
+            val priceInfo = bestDeal.price?.let { " – $it" } ?: ""
+            val discountInfo = bestDeal.discount?.let { " ($it)" } ?: ""
+            
+            tips.add("$product – $storeInfo$priceInfo$discountInfo")
+        }
+        
+        // Only show advice if we found deals for at least one product
+        if (tips.isEmpty() || foundProducts.isEmpty()) {
+            return@withContext null
+        }
+        
+        // Create formatted description
+        val productsList = foundProducts.joinToString(", ")
+        val description = if (foundProducts.size == 1) {
+            "Našao sam akciju za: $productsList"
+        } else {
+            "Našao sam akcije za: $productsList"
+        }
+        
+        // Create AdviceTemplate for shopping deals
+        AdviceTemplate(
+            id = "shopping_deals",
+            title = "💰 Akcije za tvoju shopping listu",
+            shortDescription = description,
+            tips = tips.take(5), // Limit to max 5 deals
+            whenToCallDoctor = null,
+            relatedKeywords = emptyList()
+        )
+    }
+    
+    /**
+     * Checks if a deal is actually on sale (has discount or explicit "akcija" mention).
+     * Returns true if deal appears to be a real sale, false otherwise.
+     */
+    private fun isActuallyOnSale(deal: GoogleCustomSearchService.ShoppingDeal): Boolean {
+        val snippet = (deal.snippet + " " + deal.title).lowercase()
+        
+        // Must have explicit discount indicator
+        val hasDiscount = deal.discount != null || 
+            snippet.contains("popust") ||
+            snippet.contains("snižen") ||
+            snippet.contains("sniženo") ||
+            snippet.contains("akcija") ||
+            snippet.contains("-") && Regex("""\d+%""").containsMatchIn(snippet) ||
+            Regex("""-\d+%""").containsMatchIn(snippet)
+        
+        if (!hasDiscount) {
+            android.util.Log.d("AdviceEngine", "Filtering non-sale deal: ${deal.productName} - no discount indicator")
+            return false
+        }
+        
+        return true
+    }
+    
+    /**
+     * Checks if a deal is good (not obviously overpriced).
+     * Returns true if deal seems reasonable, false if it's clearly a bad deal.
+     */
+    private fun isGoodDeal(deal: GoogleCustomSearchService.ShoppingDeal, productName: String): Boolean {
+        val price = deal.price ?: return true // If no price, assume it's OK (can't judge)
+        
+        // Extract numeric price value
+        val priceValue = extractPriceValue(price) ?: return true // If can't parse, assume OK
+        
+        // Expected price ranges for common products (in EUR)
+        val expectedPriceRanges = mapOf(
+            "kruh" to (0.5f..3.0f),
+            "mlijeko" to (0.5f..2.5f),
+            "jaja" to (1.0f..4.0f),
+            "sir" to (2.0f..8.0f),
+            "meso" to (3.0f..15.0f),
+            "piletina" to (4.0f..12.0f),
+            "svinjetina" to (5.0f..15.0f),
+            "voće" to (1.0f..5.0f),
+            "povrće" to (0.5f..4.0f),
+            "kro" to (0.5f..3.0f), // krokice
+            "cigare" to (3.0f..8.0f),
+            "salame" to (2.0f..10.0f),
+            "hrana za pse" to (2.0f..15.0f),
+            "hrana za pse" to (2.0f..15.0f)
+        )
+        
+        val productLower = productName.lowercase()
+        
+        // Check if product matches any expected price range
+        for ((keyword, range) in expectedPriceRanges) {
+            if (productLower.contains(keyword)) {
+                // If price is way above expected range, it's a bad deal
+                if (priceValue > range.endInclusive * 1.5f) { // Allow 50% above max as buffer
+                    android.util.Log.d("AdviceEngine", "Filtering bad deal: $productName at $price (expected max: ${range.endInclusive})")
+                    return false
+                }
+                return true
+            }
+        }
+        
+        // For unknown products, use general heuristics
+        // If price is extremely high (>20 EUR) for a single item, it's probably wrong
+        if (priceValue > 20.0f && productLower.length < 15) { // Short product names shouldn't cost >20 EUR
+            android.util.Log.d("AdviceEngine", "Filtering suspiciously expensive deal: $productName at $price")
+            return false
+        }
+        
+        return true
+    }
+    
+    /**
+     * Calculates a score for a deal (higher = better).
+     * Considers: discount percentage, price reasonableness, store reputation.
+     */
+    private fun calculateDealScore(deal: GoogleCustomSearchService.ShoppingDeal, productName: String): Float {
+        var score = 0f
+        
+        // Prefer deals with explicit discounts
+        if (deal.discount != null) {
+            val discountValue = extractDiscountPercentage(deal.discount)
+            if (discountValue != null) {
+                score += discountValue * 10f // Each % discount = 10 points
+            } else {
+                score += 20f // Has discount text but can't parse percentage
+            }
+        }
+        
+        // Prefer certain stores (reputation bonus)
+        val storeBonus = when (deal.storeName.lowercase()) {
+            "lidl" -> 5f
+            "kaufland" -> 3f
+            "konzum" -> 2f
+            "spar" -> 1f
+            else -> 0f
+        }
+        score += storeBonus
+        
+        // Prefer deals with price information (more reliable)
+        if (deal.price != null) {
+            score += 5f
+        }
+        
+        return score
+    }
+    
+    /**
+     * Extracts numeric price value from price string (e.g., "3,98 EUR" -> 3.98f).
+     */
+    private fun extractPriceValue(price: String): Float? {
+        return try {
+            // Remove currency symbols and extract number
+            val cleaned = price
+                .replace("€", "")
+                .replace("EUR", "")
+                .replace("kn", "")
+                .replace("HRK", "")
+                .replace(" ", "")
+                .trim()
+            
+            // Handle both comma and dot as decimal separator
+            val normalized = cleaned.replace(",", ".")
+            
+            // Extract first number (in case there are multiple)
+            val numberPattern = Regex("""(\d+\.?\d*)""")
+            val match = numberPattern.find(normalized)
+            
+            match?.value?.toFloatOrNull()
+        } catch (e: Exception) {
+            null
+        }
+    }
+    
+    /**
+     * Extracts discount percentage from discount string (e.g., "-30%" -> 30).
+     */
+    private fun extractDiscountPercentage(discount: String): Int? {
+        return try {
+            val numberPattern = Regex("""(\d+)%""")
+            val match = numberPattern.find(discount)
+            match?.groupValues?.get(1)?.toIntOrNull()
+        } catch (e: Exception) {
+            null
+        }
+    }
+    
+    /**
+     * Extracts shopping items from text.
+     * Handles comma-separated lists and space-separated items.
+     */
+    private fun extractShoppingItems(text: String): List<String> {
+        // Words to ignore (verbs, prefixes, etc.)
+        val ignoreWords = setOf(
+            "treba", "kupiti", "kupi", "kupujem", "kupujemo", "kupujete", "kupuju",
+            "need", "buy", "buying", "purchase", "get", "getting",
+            "lista", "list", "stavke", "items", "namirnice", "groceries",
+            "za", "malo", "brzo", "hitno", "sutra", "danas",
+            "i", "ili", "itd", "etc", "itd.", "etc."
+        )
+        
+        // Split by comma, newline, or "i" (and)
+        val rawItems = text
+            .replace(";", ",")
+            .replace(" i ", ",") // "kruh i mlijeko" -> "kruh, mlijeko"
+            .split(",", "\n")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+        
+        // Extract clean items
+        val cleanItems = mutableListOf<String>()
+        
+        for (item in rawItems) {
+            // Remove common prefixes
+            var cleanItem = item
+                .lowercase()
+                .trim()
+            
+            // Remove ignore words from beginning
+            val words = cleanItem.split(" ").filter { it.isNotEmpty() }
+            val filteredWords = words.filter { word ->
+                !ignoreWords.contains(word.lowercase())
+            }
+            
+            if (filteredWords.isNotEmpty()) {
+                // Reconstruct item from filtered words
+                cleanItem = filteredWords.joinToString(" ").trim()
+                
+                // Only add if it's a meaningful item (at least 2 characters)
+                if (cleanItem.length >= 2 && !cleanItem.all { it.isDigit() || it.isWhitespace() }) {
+                    cleanItems.add(cleanItem)
+                }
+            }
+        }
+        
+        // Limit to max 5 items to avoid too many API calls
+        return cleanItems.take(5).distinct()
+    }
+    
+    private fun findSmartHomeAdvice(@Suppress("UNUSED_PARAMETER") text: String): AdviceTemplate? {
         return adviceTemplates.find { it.id == "smart_home" }
+    }
+    
+    /**
+     * Gets advice template by ID.
+     * Returns null if not found.
+     */
+    fun getAdviceById(adviceId: String): AdviceTemplate? {
+        return adviceTemplates.find { it.id == adviceId }
     }
     
     private fun createAdviceTemplates(): List<AdviceTemplate> {
@@ -185,7 +535,7 @@ class AdviceEngine {
                 relatedKeywords = listOf("plače", "plač", "crying", "ne može", "ne znam")
             ),
             
-            // Feeding
+            // Feeding - Only for FEEDING category, removed "mlijeko" from keywords to avoid false positives
             AdviceTemplate(
                 id = "feeding",
                 title = "Hranjenje - Praćenje",
@@ -198,7 +548,8 @@ class AdviceEngine {
                     "Ako dijete ne želi jesti, provjerite da li je umorno ili možda rastu zubići"
                 ),
                 whenToCallDoctor = "Ako dijete ne želi jesti dugo, gubi na težini, ili ima znakove dehidracije, kontaktirajte pedijatra.",
-                relatedKeywords = listOf("dojenje", "bočica", "hranjenje", "feeding", "mlijeko")
+                relatedKeywords = listOf("dojenje", "bočica", "hranjenje", "feeding", "breast", "bottle", "najeo", "jela")
+                // Removed "mlijeko" from keywords to avoid false positives with shopping lists
             ),
             
             // Sleep trouble

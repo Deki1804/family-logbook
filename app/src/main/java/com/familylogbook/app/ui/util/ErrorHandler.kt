@@ -35,7 +35,10 @@ object ErrorHandler {
                         "Servis nije dostupan. Provjeri internetsku vezu."
                     
                     FirebaseFirestoreException.Code.PERMISSION_DENIED ->
-                        "Nemate dozvolu za ovu akciju."
+                        "Nemate dozvolu za spremanje podataka. Provjeri da li si prijavljen/na. Ako problem traje, odjavi se i prijavi ponovo."
+                    
+                    FirebaseFirestoreException.Code.UNAUTHENTICATED ->
+                        "Sesija je istekla. Molimo odjavi se i prijavi ponovo."
                     
                     FirebaseFirestoreException.Code.NOT_FOUND ->
                         "Podatak nije pronađen."
@@ -45,9 +48,6 @@ object ErrorHandler {
                     
                     FirebaseFirestoreException.Code.RESOURCE_EXHAUSTED ->
                         "Previše zahtjeva. Molimo pričekajte i pokušajte ponovo."
-                    
-                    FirebaseFirestoreException.Code.UNAUTHENTICATED ->
-                        "Sesija je istekla. Molimo prijavite se ponovo."
                     
                     else ->
                         "Greška pri spremanju podataka. Molimo pokušaj ponovo."
@@ -61,8 +61,17 @@ object ErrorHandler {
             message.contains("password is too weak", ignoreCase = true) ->
                 "Lozinka je previše slaba. Molimo koristi jaču lozinku."
             
-            message.contains("email address is already in use", ignoreCase = true) ->
+            message.contains("email address is already in use", ignoreCase = true) ||
+            message.contains("ERROR_EMAIL_ALREADY_IN_USE", ignoreCase = true) ->
                 "Ovaj email je već registriran."
+            
+            message.contains("account exists with different credential", ignoreCase = true) ||
+            message.contains("ERROR_ACCOUNT_EXISTS_WITH_DIFFERENT_CREDENTIAL", ignoreCase = true) ->
+                "Račun s ovim emailom već postoji, ali je kreiran na drugi način. Pokušaj se prijaviti sa email/lozinkom ili kontaktiraj podršku."
+            
+            message.contains("credential already in use", ignoreCase = true) ||
+            message.contains("ERROR_CREDENTIAL_ALREADY_IN_USE", ignoreCase = true) ->
+                "Ovaj Google račun je već povezan s drugim računom. Pokušaj se prijaviti direktno sa Google-om."
             
             message.contains("there is no user record", ignoreCase = true) ->
                 "Nije pronađen račun s ovim emailom."
@@ -73,6 +82,20 @@ object ErrorHandler {
             
             message.contains("too many requests", ignoreCase = true) ->
                 "Previše pokušaja. Molimo pričekaj trenutak i pokušaj ponovo."
+            
+            // Offline mode errors
+            message.contains("offline", ignoreCase = true) ||
+            message.contains("no internet", ignoreCase = true) ->
+                "Nema internetske veze. Provjeri povezanost i pokušaj ponovo."
+            
+            // Firestore quota errors
+            message.contains("quota", ignoreCase = true) ||
+            message.contains("resource exhausted", ignoreCase = true) ->
+                "Dostignut je limit zahtjeva. Molimo pričekajte i pokušajte ponovo kasnije."
+            
+            // Network timeout details
+            message.contains("timeout", ignoreCase = true) ->
+                "Zahtjev je istekao. Provjeri internetsku vezu i pokušaj ponovo."
             
             // Default
             else ->

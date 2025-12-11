@@ -1,0 +1,31 @@
+# Project-wide Gradle settings.
+org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+android.useAndroidX=true
+android.enableJetifier=true
+kotlin.code.style=official
+
+# Gradle JVM settings - use Java 17
+# Ako imate problema sa JVM verzijom, uncomment i postavite putanju do Java 17:
+# org.gradle.java.home=C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.16.8-hotspot
+# ILI
+# org.gradle.java.home=C:\\Program Files\\Java\\jdk-17
+
+# Gradle da automatski koristi Java 17 toolchain
+org.gradle.java.installations.auto-detect=true
+org.gradle.java.installations.auto-download=true
+
+# Google Gemini API Key (opcionalno - za shopping deals checker)
+# Dobijte API key na: https://aistudio.google.com/app
+# Uncomment i postavite svoj API key:
+# GEMINI_API_KEY=your_api_key_here
+
+# Google Custom Search API (za shopping deals)
+# 1. Kreiraj Custom Search Engine na: https://programmablesearchengine.google.com/
+# 2. Konfiguriraj da pretražuje samo: kaufland.hr, konzum.hr, spar.hr, lidl.hr, plodine.hr
+# 3. Dobij API key iz Google Cloud Console (enable Custom Search API)
+# 4. Dobij Engine ID iz Custom Search Engine settings
+# ⚠️ VAŽNO: Prije production-a, RESTRICT API key u Google Cloud Console!
+#    - API restrictions: Restrict key → Custom Search API
+#    - Application restrictions: Android apps → package name + SHA-1 fingerprint
+GOOGLE_CSE_API_KEY=your_api_key_here
+GOOGLE_CSE_ENGINE_ID=your_engine_id_here

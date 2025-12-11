@@ -42,6 +42,15 @@ data class LogEntry(
     // Auto tracking
     val mileage: Int? = null, // for car entries
     val serviceType: String? = null, // e.g., "Oil change", "Tire replacement"
+    
+    // Shopping tracking
+    val shoppingItems: List<String>? = null, // list of shopping items/products
+    val checkedShoppingItems: Set<String>? = null, // items that have been checked/purchased
+    
+    // Vaccination tracking
+    val vaccinationName: String? = null, // vaccination name (e.g., "MMR", "DTP-Hib-IPV")
+    val nextVaccinationDate: Long? = null, // recommended date for next vaccination
+    val nextVaccinationMessage: String? = null // message about next vaccination
 )
 
 enum class FeedingType {

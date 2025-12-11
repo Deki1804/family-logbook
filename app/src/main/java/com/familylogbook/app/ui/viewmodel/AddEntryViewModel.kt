@@ -10,16 +10,20 @@ import com.familylogbook.app.domain.model.Entity
 import com.familylogbook.app.domain.model.FeedingType
 import com.familylogbook.app.domain.model.LogEntry
 import com.familylogbook.app.domain.repository.LogbookRepository
+import com.familylogbook.app.domain.util.PersonAgeUtils.canHaveFeeding
+import com.familylogbook.app.domain.timer.TimerManager
+import android.content.Context
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class AddEntryViewModel(
     private val repository: LogbookRepository,
-    private val classifier: EntryClassifier
+    val classifier: EntryClassifier // Made public for access in AddEntryScreen
 ) : ViewModel() {
     
     // Legacy Child support
@@ -76,8 +80,77 @@ class AddEntryViewModel(
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
     
+    // Vaccination selection state (if vaccination name not detected)
+    private val _showVaccinationDialog = MutableStateFlow(false)
+    val showVaccinationDialog: StateFlow<Boolean> = _showVaccinationDialog.asStateFlow()
+    
+    private val _pendingEntryText = MutableStateFlow<String?>(null)
+    val pendingEntryText: StateFlow<String?> = _pendingEntryText.asStateFlow()
+    
+    fun setShowVaccinationDialog(show: Boolean) {
+        _showVaccinationDialog.value = show
+    }
+    
+    fun setPendingEntryText(text: String?) {
+        _pendingEntryText.value = text
+    }
+    
     fun clearError() {
         _errorMessage.value = null
+    }
+    
+    /**
+     * Extracts person name from text (e.g., "neo je primio cjepivo" -> "neo").
+     * Returns null if no person name found.
+     */
+    private fun extractPersonNameFromText(text: String, persons: List<Person>): String? {
+        val lowerText = text.lowercase()
+        
+        // Try to find person name in text by matching against known person names
+        for (person in persons) {
+            val personNameLower = person.name.lowercase()
+            // Check if person name appears in text (as whole word or at start of sentence)
+            if (lowerText.contains(personNameLower)) {
+                // Make sure it's not part of another word
+                val nameIndex = lowerText.indexOf(personNameLower)
+                val beforeChar = if (nameIndex > 0) lowerText[nameIndex - 1] else ' '
+                val afterIndex = nameIndex + personNameLower.length
+                val afterChar = if (afterIndex < lowerText.length) lowerText[afterIndex] else ' '
+                
+                // If name is surrounded by spaces or at start/end, it's likely a person name
+                if ((beforeChar == ' ' || nameIndex == 0) && 
+                    (afterChar == ' ' || afterIndex == lowerText.length || 
+                     afterChar == 'j' || afterChar == 'a' || afterChar == 'e' || afterChar == 'i' || afterChar == 'o' || afterChar == 'u')) {
+                    return person.name
+                }
+            }
+        }
+        
+        return null
+    }
+    
+    /**
+     * Saves entry with manually selected vaccination name.
+     * Called after user selects vaccination from dialog.
+     */
+    suspend fun saveEntryWithVaccination(vaccinationName: String): Boolean {
+        val pendingText = _pendingEntryText.value ?: return false
+        _pendingEntryText.value = null
+        _showVaccinationDialog.value = false
+        
+        // Temporarily set entry text with vaccination name appended
+        val originalText = _entryText.value
+        _entryText.value = "$pendingText $vaccinationName"
+        
+        // Now save entry (classification will pick up the vaccination name)
+        val result = saveEntry()
+        
+        // Restore original text if save failed
+        if (!result) {
+            _entryText.value = originalText
+        }
+        
+        return result
     }
     
     private var feedingTimerJob: Job? = null
@@ -105,6 +178,24 @@ class AddEntryViewModel(
         viewModelScope.launch {
             repository.getAllPersons().collect { personsList ->
                 _persons.value = personsList
+                
+                // If feeding is active, check if selected child can still have feeding
+                if (_isFeedingActive.value) {
+                    val selectedPersonId = _selectedPersonId.value ?: _selectedChildId.value
+                    val selectedPerson = selectedPersonId?.let { pid ->
+                        personsList.find { it.id == pid }
+                    }
+                    
+                    val canStillHaveFeeding = selectedPerson != null &&
+                                             selectedPerson.type == com.familylogbook.app.domain.model.PersonType.CHILD &&
+                                             selectedPerson.dateOfBirth != null &&
+                                             canHaveFeeding(selectedPerson.dateOfBirth)
+                    
+                    // Stop feeding if child no longer exists or is too old
+                    if (!canStillHaveFeeding) {
+                        stopFeeding()
+                    }
+                }
             }
         }
     }
@@ -139,7 +230,49 @@ class AddEntryViewModel(
         _entryText.value = text
     }
     
+    /**
+     * Sets entry text and automatically saves if it's a shopping list with items.
+     * Used for voice input that's already formatted as shopping list.
+     */
+    suspend fun setEntryTextAndAutoSave(text: String): Boolean {
+        _entryText.value = text
+        
+        if (text.isBlank()) return false
+        
+        // Klasificiraj tekst
+        val classification = classifier.classifyEntry(text)
+        
+        // Ako je shopping lista s ekstraktovanim stavkama, automatski spremi
+        if (classification.category == Category.SHOPPING && 
+            classification.shoppingItems != null && 
+            classification.shoppingItems.isNotEmpty()) {
+            
+            android.util.Log.d("AddEntryViewModel", "Auto-saving shopping list with ${classification.shoppingItems.size} items")
+            
+            // Automatski spremi shopping entry
+            return saveEntry()
+        }
+        
+        return false
+    }
+    
     fun startFeeding(feedingType: FeedingType) {
+        // Safety check: only start feeding if there are children and one is selected
+        val selectedPersonId = _selectedPersonId.value ?: _selectedChildId.value
+        val selectedPerson = selectedPersonId?.let { pid ->
+            _persons.value.find { it.id == pid }
+        }
+        
+        // Check if selected person is a child < 2 years old
+        val canStartFeeding = selectedPerson != null &&
+                              selectedPerson.type == com.familylogbook.app.domain.model.PersonType.CHILD &&
+                              selectedPerson.dateOfBirth != null &&
+                              canHaveFeeding(selectedPerson.dateOfBirth)
+        
+        if (!canStartFeeding) {
+            return // Don't start feeding if no valid child selected or child is too old
+        }
+        
         _isFeedingActive.value = true
         _selectedFeedingType.value = feedingType
         _feedingStartTime.value = System.currentTimeMillis()
@@ -150,6 +283,8 @@ class AddEntryViewModel(
         feedingTimerJob = viewModelScope.launch {
             while (_isFeedingActive.value) {
                 delay(1000)
+                // viewModelScope automatski cancel-uje job kada se ViewModel uništi,
+                // tako da je sigurno update-ovati state ovdje
                 _feedingElapsedSeconds.value = _feedingElapsedSeconds.value + 1
             }
         }
@@ -213,6 +348,118 @@ class AddEntryViewModel(
             
             val classification = classifier.classifyEntry(text)
             
+            // Check if selected person is a child/baby - only then allow feeding info
+            var selectedPersonId = _selectedPersonId.value ?: _selectedChildId.value
+            var selectedPerson = selectedPersonId?.let { pid -> 
+                _persons.value.find { it.id == pid }
+            }
+            
+            // If no person selected, try to auto-detect from text (e.g., "neo je primio cjepivo")
+            if (selectedPerson == null) {
+                val detectedPersonName = extractPersonNameFromText(text, _persons.value)
+                if (detectedPersonName != null) {
+                    val foundPerson = _persons.value.find { 
+                        it.name.equals(detectedPersonName, ignoreCase = true) 
+                    }
+                    if (foundPerson != null) {
+                        selectedPerson = foundPerson
+                        selectedPersonId = foundPerson.id
+                        _selectedPersonId.value = foundPerson.id
+                    }
+                }
+            }
+            
+            // Check if this is a vaccination entry but vaccination name is not detected
+            val isVaccinationEntry = classification.category == Category.HEALTH && 
+                (text.lowercase().contains("cjepivo") || 
+                 text.lowercase().contains("cjepiv") ||
+                 text.lowercase().contains("vakcina") ||
+                 text.lowercase().contains("vaccination") ||
+                 text.lowercase().contains("primio") ||
+                 text.lowercase().contains("primila"))
+            
+            // If vaccination entry but no vaccination name detected, try to show dialog
+            if (isVaccinationEntry && classification.vaccinationName == null) {
+                // If person is selected and is a child, show dialog
+                if (selectedPerson != null &&
+                    selectedPerson.type == com.familylogbook.app.domain.model.PersonType.CHILD &&
+                    selectedPerson.dateOfBirth != null) {
+                    
+                    // Store pending entry text and show dialog
+                    _pendingEntryText.value = text
+                    _showVaccinationDialog.value = true
+                    _isLoading.value = false
+                    return false // Don't save yet, wait for user to select vaccination
+                }
+                // If no person selected but we have children, show dialog with all children
+                else if (selectedPerson == null) {
+                    val childPersons = _persons.value.filter { 
+                        it.type == com.familylogbook.app.domain.model.PersonType.CHILD && 
+                        it.dateOfBirth != null 
+                    }
+                    if (childPersons.isNotEmpty()) {
+                        // Store pending entry text and show dialog
+                        _pendingEntryText.value = text
+                        _showVaccinationDialog.value = true
+                        _isLoading.value = false
+                        return false // Don't save yet, wait for user to select vaccination
+                    }
+                }
+            }
+            
+            // Calculate next vaccination if this is a vaccination entry for a child
+            var nextVaccinationDate: Long? = null
+            var nextVaccinationMessage: String? = null
+            
+            if (classification.vaccinationName != null && selectedPerson != null &&
+                selectedPerson.type == com.familylogbook.app.domain.model.PersonType.CHILD &&
+                selectedPerson.dateOfBirth != null) {
+                
+                // Get all previous vaccination entries for this child
+                val allEntriesFlow = repository.getAllEntries()
+                val allEntries = allEntriesFlow.first()
+                val childVaccinationEntries = allEntries.filter { entry ->
+                    (entry.personId == selectedPersonId || entry.childId == selectedPersonId) &&
+                    entry.vaccinationName != null &&
+                    entry.id != editingId // Exclude the entry being edited
+                }
+                val givenVaccinations = childVaccinationEntries.mapNotNull { it.vaccinationName }
+                
+                // If this is a new vaccination (not editing existing), add it to the list
+                val vaccinationsForCalculation = if (editingId == null && classification.vaccinationName != null) {
+                    givenVaccinations + classification.vaccinationName
+                } else {
+                    givenVaccinations
+                }
+                
+                // Get next vaccination recommendation
+                val dob = selectedPerson.dateOfBirth // Local copy to avoid smart cast issue
+                val recommendation = if (dob != null) {
+                    com.familylogbook.app.domain.vaccination.VaccinationCalendar.getNextVaccination(
+                        dateOfBirth = dob,
+                        givenVaccinations = vaccinationsForCalculation
+                    )
+                } else {
+                    null
+                }
+                
+                if (recommendation != null) {
+                    nextVaccinationDate = recommendation.recommendedDate
+                    nextVaccinationMessage = recommendation.message
+                }
+            }
+            
+            // Only allow feeding if:
+            // 1. Person is selected AND
+            // 2. Person is a CHILD type AND
+            // 3. Person has dateOfBirth AND
+            // 4. Person is less than 2 years old
+            val personDob = selectedPerson?.dateOfBirth // Local copy to avoid smart cast issue
+            val canHaveFeedingInfo = selectedPerson != null && 
+                                     selectedPerson.type == com.familylogbook.app.domain.model.PersonType.CHILD &&
+                                     personDob != null &&
+                                     canHaveFeeding(personDob)
+            
             // Get AI advice if available (use symptoms if available for better advice)
             val adviceEngine = com.familylogbook.app.domain.classifier.AdviceEngine()
             val symptomsList = if (_selectedSymptoms.value.isNotEmpty()) _selectedSymptoms.value.toList() else null
@@ -224,14 +471,22 @@ class AddEntryViewModel(
                 now + (intervalHours * 60 * 60 * 1000L)
             }
             
+            // Don't allow FEEDING category if no child/baby is selected or child is too old
+            // Change category to OTHER if classifier detected FEEDING but user has no children or child is >= 2 years
+            val finalCategory = if (classification.category == Category.FEEDING && !canHaveFeedingInfo) {
+                Category.OTHER
+            } else {
+                classification.category
+            }
+            
             val entry = LogEntry(
                 id = editingId ?: existingEntry?.id ?: java.util.UUID.randomUUID().toString(),
                 childId = _selectedChildId.value,
-                personId = _selectedPersonId.value ?: _selectedChildId.value,
+                personId = selectedPersonId,
                 entityId = _selectedEntityId.value,
                 timestamp = existingEntry?.timestamp ?: now, // Preserve original timestamp when editing
                 rawText = text,
-                category = classification.category,
+                category = finalCategory, // Use adjusted category
                 tags = classification.tags,
                 mood = classification.mood,
                 temperature = classification.temperature,
@@ -240,12 +495,20 @@ class AddEntryViewModel(
                 medicineIntervalHours = classification.medicineIntervalHours,
                 nextMedicineTime = nextMedicineTime,
                 reminderDate = classification.reminderDate, // Use extracted reminder date
-                feedingType = classification.feedingType,
-                feedingAmount = classification.feedingAmount,
+                // Only set feeding info if:
+                // 1. Category is FEEDING (after adjustment) AND
+                // 2. A child/baby person is selected (< 2 years old)
+                feedingType = if (finalCategory == Category.FEEDING && canHaveFeedingInfo) classification.feedingType else null,
+                feedingAmount = if (finalCategory == Category.FEEDING && canHaveFeedingInfo) classification.feedingAmount else null,
                 symptoms = if (_selectedSymptoms.value.isNotEmpty()) _selectedSymptoms.value.toList() else null,
+                shoppingItems = classification.shoppingItems ?: existingEntry?.shoppingItems,
+                checkedShoppingItems = existingEntry?.checkedShoppingItems ?: emptySet(), // Preserve checked items when editing
                 aiAdvice = advice?.title, // Store advice title for now
                 amount = existingEntry?.amount, // Preserve amount if editing
-                currency = existingEntry?.currency // Preserve currency if editing
+                currency = existingEntry?.currency, // Preserve currency if editing
+                vaccinationName = classification.vaccinationName ?: existingEntry?.vaccinationName,
+                nextVaccinationDate = nextVaccinationDate ?: existingEntry?.nextVaccinationDate,
+                nextVaccinationMessage = nextVaccinationMessage ?: existingEntry?.nextVaccinationMessage
             )
             
             if (editingId != null) {
@@ -277,9 +540,10 @@ class AddEntryViewModel(
         _errorMessage.value = null
         
         return try {
-            val childId = _selectedChildId.value
-            if (childId == null) {
-                _errorMessage.value = "Molimo odaberi dijete za hranjenje."
+            // Use personId first, fallback to childId for backward compatibility
+            val personId = _selectedPersonId.value ?: _selectedChildId.value
+            if (personId == null) {
+                _errorMessage.value = "Molimo odaberi osobu za hranjenje."
                 return false
             }
             
@@ -303,8 +567,8 @@ class AddEntryViewModel(
             
             val classification = classifier.classifyEntry(text)
             val entry = LogEntry(
-                childId = childId,
-                personId = childId,
+                personId = personId,
+                childId = _selectedChildId.value, // Legacy support
                 timestamp = startTime,
                 rawText = text,
                 category = Category.FEEDING,
@@ -322,6 +586,8 @@ class AddEntryViewModel(
             _bottleAmount.value = ""
             _feedingStartTime.value = null
             _feedingElapsedSeconds.value = 0L
+            _selectedChildId.value = null
+            _selectedPersonId.value = null
             
             true
         } catch (e: Exception) {

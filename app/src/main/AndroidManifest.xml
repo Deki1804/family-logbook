@@ -6,6 +6,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    
+    <!-- Permission for speech recognition -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <application
         android:allowBackup="true"
@@ -13,7 +16,7 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.FamilyLogbook"
+        android:theme="@style/Theme.FamilyOS"
         tools:targetApi="31">
         
         <provider
@@ -28,13 +31,19 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:theme="@style/Theme.FamilyLogbook"
+            android:theme="@style/Theme.FamilyOS"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        
+        <!-- Timer Alarm Receiver -->
+        <receiver
+            android:name=".data.timer.TimerAlarmReceiver"
+            android:exported="false"
+            android:enabled="true" />
     </application>
 
 </manifest>

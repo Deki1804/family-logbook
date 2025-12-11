@@ -9,6 +9,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -16,13 +17,20 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.content.Intent
 import com.familylogbook.app.data.auth.AuthManager
+import com.familylogbook.app.data.auth.GoogleSignInHelper
+import com.google.firebase.auth.FirebaseAuthException
 import kotlinx.coroutines.launch
 
 @Composable
@@ -41,6 +49,8 @@ fun LoginScreen(
     var successMessage by remember { mutableStateOf<String?>(null) }
     
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val googleSignInHelper = remember { GoogleSignInHelper(context) }
     
     Scaffold(
         topBar = {
@@ -157,6 +167,133 @@ fun LoginScreen(
                     enabled = !isLoading
                 )
             }
+            
+            // Divider before Google Sign-In
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Divider(modifier = Modifier.weight(1f))
+                Text(
+                    text = "ili",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(horizontal = 8.dp)
+                )
+                Divider(modifier = Modifier.weight(1f))
+            }
+            
+            // Google Sign-In button
+            val googleSignInLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.StartActivityForResult()
+            ) { result ->
+                scope.launch {
+                    isLoading = true
+                    errorMessage = null
+                    successMessage = null
+                    
+                    try {
+                        val account = googleSignInHelper.handleSignInResult(result.data)
+                        
+                        if (account != null) {
+                            val credential = googleSignInHelper.getFirebaseCredential(account)
+                            
+                            try {
+                                if (isAnonymous) {
+                                    // Link Google account to anonymous account
+                                    authManager.signInWithGoogleCredential(credential)
+                                    successMessage = "Račun je uspješno povezan s Google-om!"
+                                } else {
+                                    // Sign in with Google or create new account
+                                    // Firebase automatically handles:
+                                    // - Sign in if account exists with Google provider
+                                    // - Create new account if doesn't exist
+                                    authManager.signInWithGoogleCredential(credential)
+                                    // Check if user was just signed in (existing account) or created (new account)
+                                    val currentUser = authManager.getCurrentUser()
+                                    if (currentUser != null) {
+                                        // Success - either signed in or created
+                                        successMessage = "Uspješno prijavljen s Google-om!"
+                                    }
+                                }
+                                
+                                // Wait a bit to show success message, then navigate
+                                kotlinx.coroutines.delay(1000)
+                                onUpgradeSuccess()
+                            } catch (e: FirebaseAuthException) {
+                                // Handle specific Firebase auth errors
+                                when (e.errorCode) {
+                                    "ERROR_ACCOUNT_EXISTS_WITH_DIFFERENT_CREDENTIAL" -> {
+                                        errorMessage = "Račun s ovim emailom već postoji, ali je kreiran na drugi način. " +
+                                                "Pokušaj se prijaviti sa email/lozinkom ili kontaktiraj podršku."
+                                    }
+                                    "ERROR_CREDENTIAL_ALREADY_IN_USE" -> {
+                                        errorMessage = "Ovaj Google račun je već povezan s drugim računom. " +
+                                                "Pokušaj se prijaviti direktno sa Google-om."
+                                    }
+                                    "ERROR_EMAIL_ALREADY_IN_USE" -> {
+                                        errorMessage = "Ovaj email je već registriran. Pokušaj se prijaviti umjesto toga."
+                                    }
+                                    else -> {
+                                        errorMessage = getFriendlyErrorMessage(e)
+                                    }
+                                }
+                                android.util.Log.e("LoginScreen", "Google Sign-In Firebase error: ${e.errorCode}", e)
+                            } catch (e: Exception) {
+                                errorMessage = getFriendlyErrorMessage(e)
+                                android.util.Log.e("LoginScreen", "Google Sign-In error", e)
+                            }
+                        } else {
+                            errorMessage = "Google prijava nije uspjela. Pokušaj ponovo."
+                        }
+                    } catch (e: Exception) {
+                        errorMessage = getFriendlyErrorMessage(e)
+                        android.util.Log.e("LoginScreen", "Google Sign-In error", e)
+                    } finally {
+                        isLoading = false
+                    }
+                }
+            }
+            
+            Button(
+                onClick = {
+                    if (isLoading) return@Button
+                    
+                    try {
+                        val signInIntent = googleSignInHelper.getSignInIntent()
+                        googleSignInLauncher.launch(signInIntent)
+                    } catch (e: Exception) {
+                        errorMessage = "Ne mogu pokrenuti Google prijavu: ${e.message}"
+                        android.util.Log.e("LoginScreen", "Failed to launch Google Sign-In", e)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isLoading,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF4285F4) // Google blue
+                )
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    // Google "G" icon (simplified as text for now)
+                    Text(
+                        text = "G",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (isSignUp) "Prijavi se s Google-om" else "Nastavi s Google-om",
+                        color = Color.White,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
             
             // Sign in / Sign up button
             Button(

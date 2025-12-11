@@ -10,6 +10,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -99,8 +100,8 @@ fun PersonProfileScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Tab row
-            TabRow(
+            // Tab row (scrollable to avoid wrapping)
+            ScrollableTabRow(
                 selectedTabIndex = pagerState.currentPage,
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -112,7 +113,7 @@ fun PersonProfileScreen(
                                 pagerState.animateScrollToPage(index)
                             }
                         },
-                        text = { Text(title) }
+                        text = { Text(title, maxLines = 1) }
                     )
                 }
             }
@@ -211,12 +212,12 @@ fun PersonOverviewTab(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "Last 7 Days",
+                        text = "Zadnjih 7 dana",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "${last7DaysEntries.size} entries",
+                        text = "${last7DaysEntries.size} zapisa",
                         fontSize = 14.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )
@@ -240,7 +241,7 @@ fun PersonOverviewTab(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = "Mood Overview",
+                            text = "Pregled raspoloženja",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -261,7 +262,7 @@ fun PersonOverviewTab(
         // Recent entries
         item {
             Text(
-                text = "Recent Entries",
+                text = "Nedavni zapisi",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -302,7 +303,7 @@ fun PersonHealthTab(
     ) {
         item {
             Text(
-                text = "Health Entries",
+                text = "Zapisi zdravlja",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -358,7 +359,7 @@ fun PersonDevelopmentTab(
     ) {
         item {
             Text(
-                text = "Development Milestones",
+                text = "Razvojni pomaci",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -614,7 +615,7 @@ fun PersonFeedingTab(
         // All feeding entries
         item {
             Text(
-                text = "All Feeding Entries",
+                text = "Svi zapisi hranjenja",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -670,7 +671,7 @@ fun PersonSleepTab(
     ) {
         item {
             Text(
-                text = "Sleep Entries",
+                text = "Zapisi spavanja",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -731,7 +732,7 @@ fun PersonStatsSummary(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "Summary",
+                text = "Sažetak",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -778,11 +779,11 @@ fun PersonMoodTab(
                             .padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = "Mood Overview",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+            Text(
+                text = "Pregled raspoloženja",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
                         moodCounts.forEach { (mood, count) ->
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -800,7 +801,7 @@ fun PersonMoodTab(
         // All mood entries
         item {
             Text(
-                text = "All Mood Entries",
+                text = "Svi zapisi raspoloženja",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -856,7 +857,7 @@ fun PersonWorkTab(
     ) {
         item {
             Text(
-                text = "Work Entries",
+                text = "Poslovni zapisi",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -972,7 +973,7 @@ fun PersonFoodTab(
     ) {
         item {
             Text(
-                text = "Food Entries",
+                text = "Zapisi hrane",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )

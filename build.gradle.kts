@@ -5,3 +5,12 @@ plugins {
     id("com.google.gms.google-services") version "4.4.0" apply false
 }
 
+// Configure Java toolchain for all projects
+allprojects {
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+        kotlinOptions {
+            jvmTarget = "17"
+        }
+    }
+}
+

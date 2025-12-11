@@ -48,6 +48,9 @@ class SettingsViewModel(
     private val _newPersonEmoji = MutableStateFlow("👶")
     val newPersonEmoji: StateFlow<String> = _newPersonEmoji.asStateFlow()
     
+    private val _newPersonDateOfBirth = MutableStateFlow<Long?>(null)
+    val newPersonDateOfBirth: StateFlow<Long?> = _newPersonDateOfBirth.asStateFlow()
+    
     private val _newEntityName = MutableStateFlow("")
     val newEntityName: StateFlow<String> = _newEntityName.asStateFlow()
     
@@ -156,9 +159,19 @@ class SettingsViewModel(
         _newPersonEmoji.value = emoji
     }
     
+    fun setNewPersonDateOfBirth(dateOfBirth: Long?) {
+        _newPersonDateOfBirth.value = dateOfBirth
+    }
+    
     suspend fun addPerson(): Boolean {
         val name = _newPersonName.value.trim()
         if (name.isEmpty()) {
+            return false
+        }
+        
+        // For CHILD type, dateOfBirth is REQUIRED
+        if (_newPersonType.value == PersonType.CHILD && _newPersonDateOfBirth.value == null) {
+            android.util.Log.w("SettingsViewModel", "Cannot add child without date of birth")
             return false
         }
         
@@ -169,6 +182,7 @@ class SettingsViewModel(
             val person = Person(
                 name = name,
                 type = _newPersonType.value,
+                dateOfBirth = _newPersonDateOfBirth.value,
                 avatarColor = randomColor,
                 emoji = _newPersonEmoji.value,
                 relationship = name
@@ -180,6 +194,7 @@ class SettingsViewModel(
             _newPersonName.value = ""
             _newPersonType.value = PersonType.CHILD
             _newPersonEmoji.value = "👶"
+            _newPersonDateOfBirth.value = null
             
             true
         } catch (e: Exception) {
@@ -207,7 +222,7 @@ class SettingsViewModel(
         }
     }
     
-    suspend fun getPersonEntryCount(personId: String): Int {
+    fun getPersonEntryCount(personId: String): Int {
         return _entries.value.count { 
             it.personId == personId || it.childId == personId 
         }
@@ -276,7 +291,7 @@ class SettingsViewModel(
         }
     }
     
-    suspend fun getEntityEntryCount(entityId: String): Int {
+    fun getEntityEntryCount(entityId: String): Int {
         return _entries.value.count { it.entityId == entityId }
     }
     

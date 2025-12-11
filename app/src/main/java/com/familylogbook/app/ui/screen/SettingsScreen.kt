@@ -1,7 +1,15 @@
 package com.familylogbook.app.ui.screen
 
+import android.app.DatePickerDialog as AndroidDatePickerDialog
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -34,6 +42,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.familylogbook.app.data.auth.AuthManager
+import com.familylogbook.app.data.smarthome.SmartHomeManager
 import com.familylogbook.app.domain.model.Child
 import com.familylogbook.app.domain.model.Person
 import com.familylogbook.app.domain.model.Entity
@@ -50,9 +59,6 @@ fun SettingsScreen(
     onNavigateToLogin: () -> Unit = {},
     onNavigateToAddEntryForEntity: (String, com.familylogbook.app.domain.model.Category) -> Unit = { _, _ -> }
 ) {
-    val children by viewModel.children.collectAsState()
-    val newChildName by viewModel.newChildName.collectAsState()
-    val newChildEmoji by viewModel.newChildEmoji.collectAsState()
     val scope = rememberCoroutineScope()
     
     // Dialogs state
@@ -61,6 +67,7 @@ fun SettingsScreen(
     var showDeleteAccountConfirmDialog by remember { mutableStateOf(false) }
     var showChangePasswordDialog by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var successMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     
     // Change password state
@@ -106,131 +113,6 @@ fun SettingsScreen(
                     onNavigateToAddEntryForEntity(entity.id, category)
                 }
             )
-        }
-        
-        item { Divider() }
-        
-        // Children Section (legacy)
-        item {
-            Text(
-                text = "Djeca (Zastarjelo)",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-        
-        // Add child section
-        item {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = "Dodaj dijete",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                
-                OutlinedTextField(
-                    value = newChildName,
-                    onValueChange = { viewModel.setNewChildName(it) },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Ime djeteta") },
-                    placeholder = { Text("Unesi ime djeteta") }
-                )
-                
-                // Emoji picker (simplified - just a few options)
-                Text(
-                    text = "Odaberi emoji",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val emojis = listOf("👶", "👧", "👦", "🧒", "👨", "👩")
-                    emojis.forEach { emoji ->
-                        Surface(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .then(
-                                    if (newChildEmoji == emoji) {
-                                        Modifier.background(
-                                            MaterialTheme.colorScheme.primaryContainer,
-                                            CircleShape
-                                        )
-                                    } else {
-                                        Modifier
-                                    }
-                                ),
-                            shape = CircleShape,
-                            color = Color.Transparent,
-                            onClick = { viewModel.setNewChildEmoji(emoji) }
-                        ) {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(text = emoji, fontSize = 24.sp)
-                            }
-                        }
-                    }
-                }
-                
-                Button(
-                    onClick = {
-                        scope.launch {
-                            viewModel.addChild()
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = newChildName.trim().isNotEmpty()
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Dodaj dijete")
-                }
-            }
-        }
-        }
-        
-        // Children list
-        item {
-            Text(
-                text = "Djeca",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-        
-        if (children.isEmpty()) {
-            item {
-                Text(
-                    text = "Još nema dodane djece",
-                    fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                    modifier = Modifier.padding(vertical = 16.dp)
-                )
-            }
-        } else {
-            items(children) { child ->
-                ChildListItem(
-                    child = child,
-                    onDelete = {
-                        scope.launch {
-                            viewModel.deleteChild(child.id)
-                        }
-                    }
-                )
-            }
         }
         
         item { Divider() }
@@ -510,12 +392,13 @@ fun SettingsScreen(
                                 // Change password
                                 authManager?.changePassword(currentPassword, newPassword)
                                 
-                                // Success - close dialog
+                                // Success - close dialog and show success message
                                 showChangePasswordDialog = false
                                 currentPassword = ""
                                 newPassword = ""
                                 confirmNewPassword = ""
-                                errorMessage = "Lozinka je uspješno promijenjena!"
+                                // Show success message
+                                successMessage = "Lozinka je uspješno promijenjena!"
                             } catch (e: Exception) {
                                 errorMessage = com.familylogbook.app.ui.util.ErrorHandler.getFriendlyErrorMessage(e)
                             } finally {
@@ -552,8 +435,30 @@ fun SettingsScreen(
         }
         Snackbar(
             modifier = Modifier.padding(16.dp),
+            containerColor = MaterialTheme.colorScheme.errorContainer,
+            contentColor = MaterialTheme.colorScheme.onErrorContainer,
             action = {
                 TextButton(onClick = { errorMessage = null }) {
+                    Text("U redu")
+                }
+            }
+        ) {
+            Text(message)
+        }
+    }
+    
+    // Success message
+    successMessage?.let { message ->
+        LaunchedEffect(message) {
+            kotlinx.coroutines.delay(5000)
+            successMessage = null
+        }
+        Snackbar(
+            modifier = Modifier.padding(16.dp),
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            action = {
+                TextButton(onClick = { successMessage = null }) {
                     Text("U redu")
                 }
             }
@@ -739,6 +644,55 @@ fun FamilySection(
                         }
                     }
                     
+                    // Date of birth (collect state outside if block for use in Button enabled condition)
+                    val newPersonDateOfBirth by viewModel.newPersonDateOfBirth.collectAsState()
+                    
+                    // Date of birth picker (REQUIRED for CHILD type)
+                    if (newPersonType == PersonType.CHILD) {
+                        var showDatePicker by remember { mutableStateOf(false) }
+                        
+                        Text("Datum rođenja *", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.primary)
+                        Text("Obavezno za djecu (za hranjenje, cjepiva, obaveze)", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedTextField(
+                                value = if (newPersonDateOfBirth != null) {
+                                    java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.getDefault())
+                                        .format(java.util.Date(newPersonDateOfBirth!!))
+                                } else "",
+                                onValueChange = { },
+                                readOnly = true,
+                                modifier = Modifier.weight(1f),
+                                label = { Text("Datum rođenja") },
+                                placeholder = { Text("dd.MM.yyyy") },
+                                trailingIcon = {
+                                    if (newPersonDateOfBirth != null) {
+                                        IconButton(onClick = { viewModel.setNewPersonDateOfBirth(null) }) {
+                                            Icon(Icons.Default.Delete, contentDescription = "Obriši datum")
+                                        }
+                                    }
+                                }
+                            )
+                            Button(onClick = { showDatePicker = true }) {
+                                Text("Odaberi", fontSize = 12.sp)
+                            }
+                        }
+                        
+                        if (showDatePicker) {
+                            PersonDatePickerDialog(
+                                initialDate = newPersonDateOfBirth,
+                                onDateSelected = { date ->
+                                    viewModel.setNewPersonDateOfBirth(date)
+                                    showDatePicker = false
+                                },
+                                onDismiss = { showDatePicker = false }
+                            )
+                        }
+                    }
+                    
                     Button(
                         onClick = {
                             scope.launch {
@@ -748,7 +702,8 @@ fun FamilySection(
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = newPersonName.trim().isNotEmpty()
+                        enabled = newPersonName.trim().isNotEmpty() && 
+                                  (newPersonType != PersonType.CHILD || newPersonDateOfBirth != null)
                     ) {
                         Text("Dodaj osobu")
                     }
@@ -766,10 +721,11 @@ fun FamilySection(
         } else {
             persons.forEach { person ->
                 var showDeleteDialog by remember { mutableStateOf(false) }
-                val entryCount = remember { 
-                    kotlinx.coroutines.runBlocking { 
-                        viewModel.getPersonEntryCount(person.id) 
-                    } 
+                var entryCount by remember { mutableStateOf(0) }
+                
+                // Load entry count asynchronously
+                androidx.compose.runtime.LaunchedEffect(person.id) {
+                    entryCount = viewModel.getPersonEntryCount(person.id)
                 }
                 
                 PersonListItem(
@@ -934,10 +890,11 @@ fun FamilySection(
         } else {
             entities.forEach { entity ->
                 var showDeleteDialog by remember { mutableStateOf(false) }
-                val entryCount = remember { 
-                    kotlinx.coroutines.runBlocking { 
-                        viewModel.getEntityEntryCount(entity.id) 
-                    } 
+                var entryCount by remember { mutableStateOf(0) }
+                
+                // Load entry count asynchronously
+                androidx.compose.runtime.LaunchedEffect(entity.id) {
+                    entryCount = viewModel.getEntityEntryCount(entity.id)
                 }
                 
                 EntityListItem(
@@ -992,7 +949,7 @@ fun FamilySection(
 @Composable
 fun PersonListItem(
     person: Person,
-    entryCount: Int = 0,
+    @Suppress("UNUSED_PARAMETER") entryCount: Int = 0,
     onDelete: () -> Unit
 ) {
     Card(
@@ -1051,7 +1008,7 @@ fun PersonListItem(
 @Composable
 fun EntityListItem(
     entity: Entity,
-    entryCount: Int = 0,
+    @Suppress("UNUSED_PARAMETER") entryCount: Int = 0,
     onDelete: () -> Unit,
     onAddService: (() -> Unit)? = null,
     onAddExpense: (() -> Unit)? = null
@@ -1103,13 +1060,29 @@ fun EntityListItem(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (onAddService != null) {
-                    TextButton(onClick = onAddService) {
-                        Text("Dodaj servis", fontSize = 12.sp)
+                    TextButton(
+                        onClick = onAddService,
+                        modifier = Modifier.widthIn(min = 80.dp)
+                    ) {
+                        Text(
+                            "Dodaj servis",
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
                     }
                 }
                 if (onAddExpense != null) {
-                    TextButton(onClick = onAddExpense) {
-                        Text("Dodaj trošak", fontSize = 12.sp)
+                    TextButton(
+                        onClick = onAddExpense,
+                        modifier = Modifier.widthIn(min = 80.dp)
+                    ) {
+                        Text(
+                            "Dodaj trošak",
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
                     }
                 }
                 IconButton(onClick = onDelete) {
@@ -1126,9 +1099,27 @@ fun EntityListItem(
 
 @Composable
 fun AppSettingsSection() {
-    var notificationsEnabled by remember { mutableStateOf(true) }
+    val context = LocalContext.current
+    val notificationManager = androidx.core.app.NotificationManagerCompat.from(context)
+    val notificationsEnabledBySystem = remember { notificationManager.areNotificationsEnabled() }
+    var notificationsEnabled by remember { mutableStateOf(notificationsEnabledBySystem) }
     var feedingRemindersEnabled by remember { mutableStateOf(true) }
     var medicineRemindersEnabled by remember { mutableStateOf(true) }
+    
+    // Request permission launcher for Android 13+
+    val requestPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        notificationsEnabled = isGranted
+        if (!isGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            // Show message that permission is needed
+            Toast.makeText(
+                context,
+                "Dozvola za obavijesti je potrebna za podsjetnike. Možeš je omogućiti u postavkama uređaja.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
     
     Column(
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -1163,11 +1154,47 @@ fun AppSettingsSection() {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Omogući obavijesti", fontSize = 14.sp)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Omogući obavijesti", fontSize = 14.sp)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !notificationsEnabled) {
+                            Text(
+                                text = "Dozvola nije dana",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
                     Switch(
                         checked = notificationsEnabled,
-                        onCheckedChange = { notificationsEnabled = it }
+                        onCheckedChange = { 
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                // Request permission on Android 13+
+                                if (PackageManager.PERMISSION_GRANTED != 
+                                    ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS)) {
+                                    requestPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                } else {
+                                    notificationsEnabled = true
+                                }
+                            } else {
+                                notificationsEnabled = it
+                            }
+                        }
                     )
+                }
+                
+                // Show button to open settings if permission denied (Android 13+)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !notificationsEnabled) {
+                    Button(
+                        onClick = {
+                            val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                            }
+                            context.startActivity(intent)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Otvori postavke obavijesti")
+                    }
                 }
                 
                 if (notificationsEnabled) {
@@ -1221,6 +1248,70 @@ fun AppSettingsSection() {
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
+            }
+        }
+        
+        // Smart Home Integration
+        val smartHomeContext = LocalContext.current
+        val smartHomeManager = remember(smartHomeContext) { SmartHomeManager(smartHomeContext) }
+        
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "💡 Smart Home integracija",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                
+                Text(
+                    text = "Poveži se s Google Home app za direktnu kontrolu pametnih uređaja.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+                
+                Button(
+                    onClick = {
+                        val opened = smartHomeManager.openGoogleHomeApp()
+                        if (!opened) {
+                            // Fallback – ako ne uspije, otvori Play Store
+                            try {
+                                val intent = Intent(Intent.ACTION_VIEW).apply {
+                                    data = Uri.parse("market://details?id=com.google.android.apps.chromecast.app")
+                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                }
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                // Fallback to browser if Play Store app not available
+                                try {
+                                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                                        data = Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.chromecast.app")
+                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                    }
+                                    context.startActivity(intent)
+                                } catch (e2: Exception) {
+                                    Toast.makeText(
+                                        context,
+                                        "Ne mogu otvoriti Google Home ni Play Store.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("🏠 Otvori Google Home")
+                }
             }
         }
         
@@ -1279,6 +1370,7 @@ fun AdvancedSection(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .wrapContentHeight()
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -1294,9 +1386,9 @@ fun AdvancedSection(
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
                 
-                Row(
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Button(
                         onClick = { showResetDialog = true },
@@ -1524,6 +1616,49 @@ fun AboutSection() {
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
             }
+        }
+    }
+}
+
+/**
+ * Simple date picker dialog using Android DatePickerDialog.
+ */
+@Composable
+fun PersonDatePickerDialog(
+    initialDate: Long?,
+    onDateSelected: (Long) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val calendar = java.util.Calendar.getInstance()
+    
+    // Set initial date if provided
+    initialDate?.let {
+        calendar.timeInMillis = it
+    }
+    
+    val year = calendar.get(java.util.Calendar.YEAR)
+    val month = calendar.get(java.util.Calendar.MONTH)
+    val day = calendar.get(java.util.Calendar.DAY_OF_MONTH)
+    
+    LaunchedEffect(Unit) {
+        val datePickerDialog = AndroidDatePickerDialog(
+            context,
+            { _, selectedYear, selectedMonth, selectedDay ->
+                val selectedCalendar = java.util.Calendar.getInstance()
+                selectedCalendar.set(selectedYear, selectedMonth, selectedDay)
+                onDateSelected(selectedCalendar.timeInMillis)
+            },
+            year,
+            month,
+            day
+        )
+        
+        datePickerDialog.show()
+        
+        // Handle dismiss
+        datePickerDialog.setOnDismissListener {
+            onDismiss()
         }
     }
 }

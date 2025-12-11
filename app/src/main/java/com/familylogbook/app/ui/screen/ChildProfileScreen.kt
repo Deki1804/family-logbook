@@ -118,7 +118,7 @@ fun ChildProfileScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "No entries yet for ${child.name}",
+                            text = "Još nema zapisa za ${child.name}",
                             fontSize = 16.sp,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )

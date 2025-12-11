@@ -2,7 +2,7 @@
 <resources>
     <!-- Base application theme - Compose koristi Material3, ovo je samo za splash/legacy -->
     <!-- Splash screen attributes for API 31+ are in values-v31/themes.xml -->
-    <style name="Theme.FamilyLogbook" parent="android:Theme.Material.Light.NoActionBar">
+    <style name="Theme.FamilyOS" parent="android:Theme.Material.Light.NoActionBar">
     </style>
 </resources>
 

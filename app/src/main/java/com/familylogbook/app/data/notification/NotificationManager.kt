@@ -15,7 +15,7 @@ import com.familylogbook.app.MainActivity
  */
 class NotificationManager(private val context: Context) {
     
-    private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    private val systemNotificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
     
     companion object {
         private const val CHANNEL_ID_MEDICINE = "medicine_reminders"
@@ -63,9 +63,9 @@ class NotificationManager(private val context: Context) {
                 enableVibration(true)
             }
             
-            notificationManager.createNotificationChannel(medicineChannel)
-            notificationManager.createNotificationChannel(serviceChannel)
-            notificationManager.createNotificationChannel(feedingChannel)
+            systemNotificationManager.createNotificationChannel(medicineChannel)
+            systemNotificationManager.createNotificationChannel(serviceChannel)
+            systemNotificationManager.createNotificationChannel(feedingChannel)
         }
     }
     
@@ -78,7 +78,7 @@ class NotificationManager(private val context: Context) {
         notificationId: Int
     ) {
         val title = if (personName != null) {
-            "Vrijeme za uzimanje lijeka: $medicineName"
+            "$personName - Vrijeme za uzimanje lijeka: $medicineName"
         } else {
             "Vrijeme za uzimanje lijeka: $medicineName"
         }
@@ -110,7 +110,7 @@ class NotificationManager(private val context: Context) {
             .setContentIntent(pendingIntent)
             .build()
         
-        notificationManager.notify(notificationId, notification)
+        systemNotificationManager.notify(notificationId, notification)
     }
     
     /**
@@ -142,7 +142,7 @@ class NotificationManager(private val context: Context) {
             .setContentIntent(pendingIntent)
             .build()
         
-        notificationManager.notify(notificationId, notification)
+        systemNotificationManager.notify(notificationId, notification)
     }
     
     /**
@@ -174,21 +174,21 @@ class NotificationManager(private val context: Context) {
             .setContentIntent(pendingIntent)
             .build()
         
-        notificationManager.notify(notificationId, notification)
+        systemNotificationManager.notify(notificationId, notification)
     }
     
     /**
      * Cancels a notification by ID.
      */
     fun cancelNotification(notificationId: Int) {
-        notificationManager.cancel(notificationId)
+        systemNotificationManager.cancel(notificationId)
     }
     
     /**
      * Cancels all notifications.
      */
     fun cancelAllNotifications() {
-        notificationManager.cancelAll()
+        systemNotificationManager.cancelAll()
     }
 }
 

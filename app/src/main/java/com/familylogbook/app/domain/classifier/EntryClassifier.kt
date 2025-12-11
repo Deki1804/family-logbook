@@ -4,6 +4,7 @@ import com.familylogbook.app.domain.model.Category
 import com.familylogbook.app.domain.model.ClassifiedEntryMetadata
 import com.familylogbook.app.domain.model.FeedingType
 import com.familylogbook.app.domain.model.Mood
+import com.familylogbook.app.domain.vaccination.VaccinationCalendar
 
 /**
  * Fake AI classifier for Phase 1.
@@ -18,10 +19,23 @@ class EntryClassifier {
         val category = detectCategory(lowerText)
         val mood = detectMood(lowerText)
         val tags = extractTags(lowerText, category)
-        val temperature = extractTemperature(text)
-        val medicine = extractMedicine(text)
-        val medicineInterval = extractMedicineInterval(text)
-        val (feedingType, feedingAmount) = extractFeeding(text)
+        
+        // ONLY extract medicine info if category is HEALTH
+        val temperature = if (category == Category.HEALTH) extractTemperature(text) else null
+        val medicine = if (category == Category.HEALTH) extractMedicine(text) else null
+        val medicineInterval = if (category == Category.HEALTH) extractMedicineInterval(text) else null
+        
+        // ONLY extract feeding info if category is FEEDING (not for shopping lists or other categories)
+        val (feedingType, feedingAmount) = if (category == Category.FEEDING) extractFeeding(text) else Pair(null, null)
+        
+        val shoppingItems = if (category == Category.SHOPPING) extractShoppingItems(text) else null
+        
+        // Extract vaccination info if detected
+        val vaccinationName = if (category == Category.HEALTH) {
+            VaccinationCalendar.extractVaccinationName(text)
+        } else {
+            null
+        }
         
         return ClassifiedEntryMetadata(
             category = category,
@@ -31,17 +45,24 @@ class EntryClassifier {
             medicineGiven = medicine,
             medicineIntervalHours = medicineInterval,
             feedingType = feedingType,
-            feedingAmount = feedingAmount
+            feedingAmount = feedingAmount,
+            shoppingItems = shoppingItems,
+            vaccinationName = vaccinationName,
+            nextVaccinationDate = null, // Will be calculated in AddEntryViewModel based on child's age
+            nextVaccinationMessage = null
         )
     }
     
     private fun detectCategory(text: String): Category {
         // Health keywords
         val healthKeywords = listOf(
-            "fever", "temperature", "sick", "ill", "medicine", "medication", "syrup",
+            "fever", "temperature", "temperatura", "temperaturu", "temperatur", "vrućica",
+            "sick", "ill", "medicine", "medication", "syrup", "sirup", "lijek",
+            "nurofen", "ibuprofen", "brufen", "dalsy", "paracetamol", "panadol",
             "doctor", "hospital", "cough", "cold", "flu", "virus", "infection",
-            "vaccine", "vaccination", "pain", "ache", "hurt", "injury", "bandage",
-            "tooth", "teeth", "dentist", "zub", "zubić", "temperatur", "vruć",
+            "vaccine", "vaccination", "vakcina", "cjepivo", "cjepiv", "primio cjepivo", "primila cjepivo",
+            "pain", "ache", "hurt", "injury", "bandage",
+            "tooth", "teeth", "dentist", "zub", "zubić",
             "grč", "grčevi", "colic", "plače", "plač", "crying"
         )
         
@@ -52,11 +73,11 @@ class EntryClassifier {
             "budan", "budio", "ne spava", "trouble sleeping", "can't sleep"
         )
         
-        // Feeding keywords
+        // Feeding keywords - eksplicitni glagoli i akcije, NE samo namirnice
         val feedingKeywords = listOf(
             "feeding", "feed", "fed", "dojenje", "dojio", "dojka", "bočica",
-            "bottle", "breast", "mlijeko", "milk", "hranjenje", "hranio",
-            "breast_left", "breast_right", "ml"
+            "bottle", "breast", "hranjenje", "hranio", "najeo", "jela", "jeo",
+            "breast_left", "breast_right", "ml", "napit", "pio", "pila"
         )
         
         // Mood keywords
@@ -129,7 +150,8 @@ class EntryClassifier {
             "shopping", "kupovina", "grocery", "namirnice",
             "store", "trgovina", "shop", "dućan",
             "buy", "kupiti", "kupit", "kupi", "kupio", "kupujemo", "purchase", "nabava",
-            "list", "lista", "spisak", "popis", "need to buy", "treba kupiti", "za kupiti"
+            "list", "lista", "spisak", "popis", "need to buy", "treba kupiti", "za kupiti",
+            "psi", "pse", "psa", "hrana za pse", "krokice", "cigare", "salame"
         )
         
         // Home keywords (legacy, keeping for backward compatibility)
@@ -141,20 +163,22 @@ class EntryClassifier {
         
         when {
             // Priority order matters - more specific first
+            // HEURISTIKA PRVO - prije keyword matchinga!
+            // Ako izgleda kao shopping lista, to je prioritet (bez obzira na "rok", "mlijeko", itd.)
+            looksLikeShoppingList(text) -> return Category.SHOPPING
             smartHomeKeywords.any { text.contains(it) } -> return Category.SMART_HOME
             autoKeywords.any { text.contains(it) } -> return Category.AUTO
             financeKeywords.any { text.contains(it) } -> return Category.FINANCE
             houseKeywords.any { text.contains(it) } -> return Category.HOUSE
-            workKeywords.any { text.contains(it) } -> return Category.WORK
+            // Shopping keywords PRIJE workKeywords - "treba kupiti" je shopping, ne work!
             shoppingKeywords.any { text.contains(it) } -> return Category.SHOPPING
+            workKeywords.any { text.contains(it) } -> return Category.WORK
             feedingKeywords.any { text.contains(it) } -> return Category.FEEDING
             healthKeywords.any { text.contains(it) } -> return Category.HEALTH
             sleepKeywords.any { text.contains(it) } -> return Category.SLEEP
             moodKeywords.any { text.contains(it) } -> return Category.MOOD
             developmentKeywords.any { text.contains(it) } -> return Category.DEVELOPMENT
             schoolKeywords.any { text.contains(it) } -> return Category.SCHOOL
-            // Heuristika: čisti popis namirnica bez glagola → SHOPPING
-            looksLikeShoppingList(text) -> return Category.SHOPPING
             else -> return Category.OTHER
         }
     }
@@ -164,10 +188,42 @@ class EntryClassifier {
      * - puno zareza ili novih redova
      * - kratke riječi (1–3 riječi po stavci)
      * - gotovo bez glagola
+     * - ILI sadrži shopping keyword-e
      */
     private fun looksLikeShoppingList(text: String): Boolean {
         // Ako je već jako dugačak narativni tekst, preskoči
         if (text.length > 200) return false
+        
+        // Provjeri da li tekst sadrži shopping keyword-e (možda je već formatiran)
+        val shoppingKeywords = listOf(
+            "shopping", "kupovina", "grocery", "namirnice",
+            "store", "trgovina", "shop", "dućan",
+            "buy", "kupiti", "kupit", "kupi", "kupio", "kupujemo", "purchase", "nabava",
+            "list", "lista", "spisak", "popis", "need to buy", "treba kupiti", "za kupiti"
+        )
+        
+        val lowerText = text.lowercase()
+        val hasShoppingKeyword = shoppingKeywords.any { lowerText.contains(it) }
+        
+        // Ako ima shopping keyword, provjeri da li ima barem 1-2 stavke nakon toga
+        if (hasShoppingKeyword) {
+            // Razbij po zarezima ili razmacima da provjerimo koliko stavki ima
+            val items = text
+                .replace(";", ",")
+                .split("\n", ",")
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .filter { item ->
+                    // Filtrirati keyword-e
+                    val lowerItem = item.lowercase()
+                    !shoppingKeywords.any { keyword -> lowerItem.contains(keyword) }
+                }
+            
+            // Ako ima barem 2 stavke nakon keyword-a, ili ako ima zareze i barem 2 stavke
+            if (items.size >= 2 || (text.contains(",") && items.size >= 1)) {
+                return true
+            }
+        }
 
         // Razbij po novom redu i zarezima
         val rawItems = text
@@ -175,8 +231,14 @@ class EntryClassifier {
             .split("\n", ",")
             .map { it.trim() }
             .filter { it.isNotEmpty() }
+            // Filtrirati shopping keyword-e da ne bi bili računati kao stavke
+            .filter { item ->
+                val lowerItem = item.lowercase()
+                !shoppingKeywords.any { keyword -> lowerItem.contains(keyword) }
+            }
 
-        if (rawItems.size < 3) return false // treba bar nekoliko stavki
+        // Ako ima manje od 2 stavke, nije lista (minimalno "kruh, mlijeko")
+        if (rawItems.size < 2) return false
 
         // Riječi koje često označavaju glagole / rečenice (ono što NE želimo)
         val verbLikeTokens = listOf(
@@ -184,6 +246,8 @@ class EntryClassifier {
             "bio", "bila", "bilo", "bili", "bile",
             "imam", "imamo", "imate", "imaju",
             "bio sam", "radili", "išli", "dosao", "došao",
+            "dojio", "dojenje", "hranio", "jela", "jeo", "najeo",
+            "feeding", "fed", "feed", "bottle", "breast",
             "went", "did", "was", "were", "have", "has", "is", "are"
         )
 
@@ -197,16 +261,56 @@ class EntryClassifier {
                 continue
             }
 
-            // Ako sadrži glagolske fraze, tretiraj kao rečenicu
-            if (verbLikeTokens.any { token -> item.contains(token) }) {
+            // Ako sadrži glagolske fraze (feeding akcije), tretiraj kao rečenicu
+            if (verbLikeTokens.any { token -> item.lowercase().contains(token) }) {
                 sentenceLikeCount++
             }
         }
 
         // Ako je većina stavki kratka i bez glagola → shopping lista
+        // Povećavamo prag - ako je manje od 50% rečenica, to je lista (strožiji kriterij)
         val listSize = rawItems.size
         val sentenceRatio = sentenceLikeCount.toDouble() / listSize.toDouble()
-        return sentenceRatio < 0.3
+        
+        // Dodatna provjera: ako su sve stavke kratke (1-3 riječi), vjerojatno je lista
+        val shortItemsCount = rawItems.count { it.split(" ").filter { w -> w.isNotBlank() }.size <= 3 }
+        val shortItemsRatio = shortItemsCount.toDouble() / listSize.toDouble()
+        
+        // Ako su sve stavke kratke (npr. "mlijeko, kolač, govno"), to je sigurno lista
+        if (shortItemsRatio >= 0.8) {
+            return true
+        }
+        
+        return sentenceRatio < 0.3 // Ako je manje od 30% rečenica, to je lista
+    }
+    
+    /**
+     * Extracts shopping items from text (for SHOPPING category).
+     * Splits text by commas, semicolons, or newlines and filters valid items.
+     */
+    private fun extractShoppingItems(text: String): List<String>? {
+        // Razbij po novom redu, zarezima i točka-zarezima
+        val rawItems = text
+            .replace(";", ",")
+            .replace(" i ", ",") // Handle "kruh i mlijeko" format
+            .split("\n", ",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .filter { item ->
+                // Filter out common prefixes/verbs that indicate it's not a simple item
+                val lowerItem = item.lowercase()
+                !lowerItem.startsWith("treba") && 
+                !lowerItem.startsWith("need") &&
+                !lowerItem.startsWith("kupiti") &&
+                !lowerItem.startsWith("buy") &&
+                !lowerItem.contains("lista") &&
+                !lowerItem.contains("list") &&
+                !lowerItem.contains("itd") && // Filter "itd" (etc.)
+                !lowerItem.contains("etc")
+            }
+        
+        // Return items if we found at least 1 valid item
+        return if (rawItems.isNotEmpty()) rawItems else null
     }
     
     private fun detectMood(text: String): Mood? {
@@ -340,18 +444,23 @@ class EntryClassifier {
     
     private fun extractMedicine(text: String): String? {
         val lowerText = text.lowercase()
-        val medicineKeywords = listOf(
-            "sirup", "syrup", "paracetamol", "ibuprofen", "panadol", "brufen",
-            "lijek", "medicine", "medication", "tableta", "tablet"
+        val knownMedicines = listOf(
+            "nurofen", "ibuprofen", "brufen", "dalsy",
+            "paracetamol", "panadol", "acetaminophen", "tylenol",
+            "andol", "aspirin"
         )
         
-        // Simple extraction - if medicine keywords are present, try to extract the medicine name
-        if (medicineKeywords.any { lowerText.contains(it) }) {
-            // Try to find medicine name after keywords
-            for (keyword in medicineKeywords) {
+        val genericKeywords = listOf("medicine", "medication", "lijek", "sirup", "syrup", "tableta", "tablet")
+        
+        // Prefer known medicine names directly
+        val foundKnown = knownMedicines.firstOrNull { lowerText.contains(it) }
+        if (foundKnown != null) return foundKnown
+        
+        // Fallback: try to grab the word after generic keywords
+        if (genericKeywords.any { lowerText.contains(it) }) {
+            for (keyword in genericKeywords) {
                 val index = lowerText.indexOf(keyword)
                 if (index != -1) {
-                    // Try to extract a word or phrase after the keyword
                     val afterKeyword = text.substring(index + keyword.length).trim()
                     val words = afterKeyword.split(Regex("[\\s,.]"))
                     if (words.isNotEmpty() && words[0].length > 2) {
@@ -396,7 +505,7 @@ class EntryClassifier {
         // Ibuprofen / Brufen / Advil - usually every 6-8 hours
         if (lowerText.contains("ibuprofen") || lowerText.contains("brufen") || 
             lowerText.contains("advil") || lowerText.contains("nurofen")) {
-            return 8
+            return 6 // prefer sooner reminder (6–8h typical)
         }
         
         // Aspirin - usually every 4-6 hours
@@ -439,13 +548,21 @@ class EntryClassifier {
     private fun extractFeeding(text: String): Pair<FeedingType?, Int?> {
         val lowerText = text.lowercase()
         
-        // Detect feeding type
+        // Don't detect feeding if it looks like a shopping list (avoid false positives)
+        if (looksLikeShoppingList(text)) {
+            return Pair(null, null)
+        }
+        
+        // Detect feeding type - only explicit feeding actions/verbs
         val feedingType = when {
-            lowerText.contains("lijeva") || lowerText.contains("left") -> FeedingType.BREAST_LEFT
-            lowerText.contains("desna") || lowerText.contains("right") -> FeedingType.BREAST_RIGHT
+            (lowerText.contains("lijeva") || lowerText.contains("left")) && 
+            (lowerText.contains("dojka") || lowerText.contains("breast")) -> FeedingType.BREAST_LEFT
+            (lowerText.contains("desna") || lowerText.contains("right")) && 
+            (lowerText.contains("dojka") || lowerText.contains("breast")) -> FeedingType.BREAST_RIGHT
             lowerText.contains("bočic") || lowerText.contains("bottle") -> FeedingType.BOTTLE
-            lowerText.contains("dojenje") || lowerText.contains("breast") -> {
-                // Default to left if not specified
+            (lowerText.contains("dojenje") || lowerText.contains("dojio") || lowerText.contains("breast")) && 
+            !looksLikeShoppingList(text) -> {
+                // Default to left if not specified, but only if not a shopping list
                 FeedingType.BREAST_LEFT
             }
             else -> null

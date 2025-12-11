@@ -98,6 +98,23 @@ class ExportManager {
                 }
                 entryObj.put("symptoms", symptomsArray)
             }
+            entry.shoppingItems?.takeIf { it.isNotEmpty() }?.let { itemsList ->
+                val itemsArray = JSONArray()
+                itemsList.forEach { item ->
+                    itemsArray.put(item)
+                }
+                entryObj.put("shoppingItems", itemsArray)
+            }
+            entry.checkedShoppingItems?.takeIf { it.isNotEmpty() }?.let { checkedSet ->
+                val checkedArray = JSONArray()
+                checkedSet.forEach { item ->
+                    checkedArray.put(item)
+                }
+                entryObj.put("checkedShoppingItems", checkedArray)
+            }
+            entry.vaccinationName?.let { entryObj.put("vaccinationName", it) }
+            entry.nextVaccinationDate?.let { entryObj.put("nextVaccinationDate", it) }
+            entry.nextVaccinationMessage?.let { entryObj.put("nextVaccinationMessage", it) }
             entriesArray.put(entryObj)
         }
         json.put("entries", entriesArray)
@@ -337,6 +354,35 @@ class ExportManager {
                                     null
                                 }
                             }
+                        } else null,
+                        shoppingItems = if (entryObj.has("shoppingItems") && !entryObj.isNull("shoppingItems")) {
+                            val itemsArray = entryObj.getJSONArray("shoppingItems")
+                            (0 until itemsArray.length()).mapNotNull {
+                                try {
+                                    itemsArray.getString(it)
+                                } catch (e: Exception) {
+                                    null
+                                }
+                            }
+                        } else null,
+                        checkedShoppingItems = if (entryObj.has("checkedShoppingItems") && !entryObj.isNull("checkedShoppingItems")) {
+                            val checkedArray = entryObj.getJSONArray("checkedShoppingItems")
+                            (0 until checkedArray.length()).mapNotNull {
+                                try {
+                                    checkedArray.getString(it)
+                                } catch (e: Exception) {
+                                    null
+                                }
+                            }.toSet()
+                        } else null,
+                        vaccinationName = if (entryObj.has("vaccinationName") && !entryObj.isNull("vaccinationName")) {
+                            entryObj.getString("vaccinationName")
+                        } else null,
+                        nextVaccinationDate = if (entryObj.has("nextVaccinationDate") && !entryObj.isNull("nextVaccinationDate")) {
+                            entryObj.getLong("nextVaccinationDate")
+                        } else null,
+                        nextVaccinationMessage = if (entryObj.has("nextVaccinationMessage") && !entryObj.isNull("nextVaccinationMessage")) {
+                            entryObj.getString("nextVaccinationMessage")
                         } else null
                     )
                     entriesList.add(entry)

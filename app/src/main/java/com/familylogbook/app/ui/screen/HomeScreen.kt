@@ -1,9 +1,10 @@
 package com.familylogbook.app.ui.screen
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
@@ -18,15 +19,18 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.material3.Badge
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,11 +40,22 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.familylogbook.app.data.smarthome.SmartHomeManager
+import com.familylogbook.app.data.speech.SpeechRecognizerHelper
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import androidx.core.content.ContextCompat
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import com.familylogbook.app.domain.model.Category
 import com.familylogbook.app.domain.model.Child
 import com.familylogbook.app.domain.model.LogEntry
@@ -48,8 +63,13 @@ import com.familylogbook.app.domain.model.Mood
 import com.familylogbook.app.domain.model.Person
 import com.familylogbook.app.domain.model.Entity
 import com.familylogbook.app.ui.component.AdviceCard
+import com.familylogbook.app.ui.component.TodayOverviewCard
+import com.familylogbook.app.ui.component.ImportantCardsGrid
+import com.familylogbook.app.ui.component.RecentEntriesList
+import com.familylogbook.app.ui.component.AdvicePill
 import com.familylogbook.app.ui.navigation.Screen
 import com.familylogbook.app.ui.viewmodel.HomeViewModel
+import com.familylogbook.app.domain.timer.TimerManager
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -122,27 +142,67 @@ data class EntryGroup(
 fun HomeScreen(
     viewModel: HomeViewModel,
     onNavigateToAddEntry: () -> Unit,
+    onNavigateToAddEntryWithText: (String) -> Unit = { onNavigateToAddEntry() },
     onNavigateToEditEntry: (String) -> Unit = {},
+    onNavigateToEntryDetail: (String) -> Unit = {},
     onNavigateToPersonProfile: (String) -> Unit = {},
-    onNavigateToEntityProfile: (String) -> Unit = {},
-    onNavigateToCategoryDetail: (Category) -> Unit = {}
+    @Suppress("UNUSED_PARAMETER") onNavigateToEntityProfile: (String) -> Unit = {},
+    onNavigateToCategoryDetail: (Category) -> Unit = {},
+    onNavigateToAdvice: () -> Unit = {},
+    onNavigateToAdviceDetail: (com.familylogbook.app.domain.model.AdviceTemplate) -> Unit = {}
 ) {
-    val entries by viewModel.filteredEntries.collectAsState()
-    val children by viewModel.children.collectAsState()
     val persons by viewModel.persons.collectAsState()
     val entities by viewModel.entities.collectAsState()
-    val searchQuery by viewModel.searchQuery.collectAsState()
+    val shoppingDealsCache by viewModel.shoppingDealsByEntryId.collectAsState()
+    
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    
+    // Speech recognition state
+    var isListening by remember { mutableStateOf(false) }
+    var speechHelper by remember { mutableStateOf<SpeechRecognizerHelper?>(null) }
+    var showSpeechError by remember { mutableStateOf<String?>(null) }
+    
+    // Initialize speech helper
+    LaunchedEffect(Unit) {
+        speechHelper = SpeechRecognizerHelper(context)
+    }
+    
+    // Permission launcher for microphone
+    val requestPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            // Start listening if permission granted
+            speechHelper?.startListening(
+                onResult = { text ->
+                    isListening = false
+                    if (text != null && text.isNotBlank()) {
+                        // Automatically format as shopping list if shopping keywords are detected
+                        val formattedText = com.familylogbook.app.domain.classifier.ShoppingListFormatter.processVoiceInput(text)
+                        // Navigate to add entry with recognized text
+                        onNavigateToAddEntryWithText(formattedText)
+                    }
+                },
+                onError = { error ->
+                    isListening = false
+                    showSpeechError = error
+                }
+            )
+            isListening = true
+        } else {
+            showSpeechError = "Potrebna je dozvola za mikrofon da bi glasovni unos radio."
+        }
+    }
     val selectedCategory by viewModel.selectedCategory.collectAsState()
     val selectedPersonId by viewModel.selectedPersonId.collectAsState()
     val selectedEntityId by viewModel.selectedEntityId.collectAsState()
     
-    val context = LocalContext.current
     val smartHomeManager = remember(context) { SmartHomeManager(context) }
     var showFilterSheet by remember { mutableStateOf(false) }
     
     // LazyListState for scroll control
     val lazyListState = rememberLazyListState()
-    val scope = rememberCoroutineScope()
     
     // Reset scroll position to top when filters change (e.g., when navigating from Stats)
     // This ensures that when user clicks on a category in Stats, they see filtered results from the top
@@ -152,7 +212,8 @@ fun HomeScreen(
         }
     }
     
-    // Count active filters
+    // Count active filters (currently not used, but kept for future use)
+    @Suppress("UNUSED_VARIABLE")
     val activeFilterCount = remember(selectedPersonId, selectedEntityId, selectedCategory) {
         var count = 0
         if (selectedPersonId != null) count++
@@ -161,243 +222,320 @@ fun HomeScreen(
         count
     }
     
+    // Get all entries (not filtered) for overview
+    val allEntries by viewModel.entries.collectAsState()
+    
+    // Active timers
+    val activeTimers by TimerManager.activeTimers.collectAsState()
+    
     Box(modifier = Modifier.fillMaxSize()) {
-        if (entries.isEmpty()) {
+        if (allEntries.isEmpty()) {
             EmptyState(
                 modifier = Modifier.align(Alignment.Center),
                 onAddEntry = onNavigateToAddEntry
             )
         } else {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // Compact filters section
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surface)
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Search bar with filter button
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        SearchBar(
-                            query = searchQuery,
-                            onQueryChange = { viewModel.setSearchQuery(it) },
-                            modifier = Modifier.weight(1f)
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 16.dp,
+                    bottom = 100.dp // Extra padding for FAB buttons at bottom
+                ),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // 0. Active Timers Card (if any)
+                if (activeTimers.isNotEmpty()) {
+                    items(activeTimers) { timer ->
+                        ActiveTimerCard(
+                            timer = timer,
+                            onCancel = { TimerManager.cancelTimer(timer.id) }
                         )
-                        
-                        // Filter button with badge
-                        IconButton(
-                            onClick = { showFilterSheet = true },
-                            modifier = Modifier.size(48.dp)
-                        ) {
-                            Box {
-                                Icon(
-                                    Icons.Default.FilterList,
-                                    contentDescription = "Filter",
-                                    tint = if (activeFilterCount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                )
-                                if (activeFilterCount > 0) {
-                                    Badge(
-                                        modifier = Modifier.align(Alignment.TopEnd)
+                    }
+                }
+                
+                // 1. Today Overview Card
+                item {
+                    val today = java.util.Calendar.getInstance().apply {
+                        set(java.util.Calendar.HOUR_OF_DAY, 0)
+                        set(java.util.Calendar.MINUTE, 0)
+                        set(java.util.Calendar.SECOND, 0)
+                        set(java.util.Calendar.MILLISECOND, 0)
+                    }
+                    val todayStart = today.timeInMillis
+                    val todayEnd = todayStart + (24 * 60 * 60 * 1000L)
+                    
+                    val todayEntries = allEntries
+                        .filter { it.timestamp >= todayStart && it.timestamp < todayEnd }
+                        .sortedByDescending { it.timestamp }
+                    
+                    TodayOverviewCard(
+                        entries = allEntries,
+                        persons = persons,
+                        onClick = {
+                            // If only one entry today, open it directly
+                            // Otherwise, scroll to today's entries
+                            if (todayEntries.size == 1) {
+                                onNavigateToEntryDetail(todayEntries.first().id)
+                            } else if (todayEntries.isNotEmpty()) {
+                                // Scroll to first today entry
+                                scope.launch {
+                                    val firstTodayEntry = todayEntries.first()
+                                    val allSortedEntries = allEntries.sortedByDescending { it.timestamp }
+                                    val index = allSortedEntries.indexOfFirst { it.id == firstTodayEntry.id }
+                                    if (index >= 0) {
+                                        lazyListState.animateScrollToItem(index + 2) // +2 for Today card and ImportantCardsGrid
+                                    }
+                                }
+                            }
+                        }
+                    )
+                }
+                
+                // 2. Important Cards Grid (2x2) - only shows relevant cards
+                item {
+                    ImportantCardsGrid(
+                        persons = persons,
+                        entities = entities,
+                        entries = allEntries,
+                        onChildClick = {
+                            // Navigate to first child profile
+                            val firstChild = persons.firstOrNull { it.type == com.familylogbook.app.domain.model.PersonType.CHILD }
+                            firstChild?.let { onNavigateToPersonProfile(it.id) }
+                        },
+                        onEntityClick = { entityId ->
+                            // Navigate to entity profile
+                            onNavigateToEntityProfile(entityId)
+                        },
+                        onShoppingClick = {
+                            // Navigate to shopping category detail screen
+                            onNavigateToCategoryDetail(Category.SHOPPING)
+                        },
+                        onAdviceClick = {
+                            // Scroll to advice pills section (or show all advice)
+                            onNavigateToAdvice()
+                        },
+                        onSmartHomeClick = {
+                            // First try to open Google Home app
+                            val opened = smartHomeManager.openGoogleHomeApp()
+                            if (!opened) {
+                                // Fallback to Play Store only if app is not installed
+                                try {
+                                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                                        data = Uri.parse("market://details?id=com.google.android.apps.chromecast.app")
+                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                    }
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    // Ignore
+                                }
+                            }
+                        }
+                    )
+                }
+                
+                // 3. Advice Pills (if any) - LIMITED to max 2 most relevant
+                // Collect advice for recent entries
+                val recentEntriesForAdvice by derivedStateOf {
+                    allEntries
+                        .sortedByDescending { it.timestamp }
+                        .take(10) // Check more entries to find best advice
+                        .filter { it.category != Category.OTHER && it.category != Category.SHOPPING }
+                        .take(2) // Limit to max 2 regular advice pills
+                }
+                
+                // Regular advice pills - get advice in Composable context
+                items(
+                    items = recentEntriesForAdvice,
+                    key = { it.id }
+                ) { entry ->
+                    // Get advice in Composable context, not in remember
+                    val dismissedAdviceIds by viewModel.dismissedAdviceIds.collectAsState()
+                    val advice = viewModel.getAdviceForEntry(entry)
+                    advice?.let {
+                        // Skip if dismissed
+                        if (it.id in dismissedAdviceIds) {
+                            return@let
+                        }
+                        // IMPORTANT: Only show work_reminder advice if entry is actually WORK category
+                        // This prevents showing work advice for entries that were incorrectly classified
+                        if (it.id == "work_reminder" && entry.category != Category.WORK) {
+                            // Skip this advice - entry is not WORK category
+                            return@let
+                        }
+                        var showDeleteDialog by remember { mutableStateOf(false) }
+                        AdvicePill(
+                            advice = it,
+                            onClick = {
+                                onNavigateToAdviceDetail(it)
+                            },
+                            onLongClick = {
+                                showDeleteDialog = true
+                            }
+                        )
+                        if (showDeleteDialog) {
+                            androidx.compose.material3.AlertDialog(
+                                onDismissRequest = { showDeleteDialog = false },
+                                title = { Text("Obriši savjet?") },
+                                text = { Text("Želiš li obrisati ovaj savjet?") },
+                                confirmButton = {
+                                    TextButton(
+                                        onClick = {
+                                            // Hide this advice by storing dismissed advice IDs
+                                            viewModel.dismissAdvice(it.id)
+                                            showDeleteDialog = false
+                                        }
                                     ) {
-                                        Text("$activeFilterCount", fontSize = 10.sp)
+                                        Text("Obriši")
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showDeleteDialog = false }) {
+                                        Text("Odustani")
                                     }
                                 }
-                            }
+                            )
                         }
-                    }
-
-                    // Active filters as chips (only show if any are active)
-                    if (activeFilterCount > 0) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            // Person filter
-                            selectedPersonId?.let { personId ->
-                                val person = persons.find { it.id == personId }
-                                person?.let {
-                                    AssistChip(
-                                        onClick = { viewModel.setSelectedPerson(null) },
-                                        label = { Text("${it.emoji} ${it.name}") },
-                                        trailingIcon = {
-                                            Icon(
-                                                Icons.Default.Delete,
-                                                contentDescription = "Ukloni",
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                    )
-                                }
-                            }
-                            
-                            // Entity filter
-                            selectedEntityId?.let { entityId ->
-                                val entity = entities.find { it.id == entityId }
-                                entity?.let {
-                                    AssistChip(
-                                        onClick = { viewModel.setSelectedEntity(null) },
-                                        label = { Text("${it.emoji} ${it.name}") },
-                                        trailingIcon = {
-                                            Icon(
-                                                Icons.Default.Delete,
-                                                contentDescription = "Ukloni",
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                    )
-                                }
-                            }
-                            
-                            // Category filter
-                            selectedCategory?.let { category ->
-                                AssistChip(
-                                    onClick = { viewModel.setSelectedCategory(null) },
-                                    label = { Text(getCategoryDisplayName(category)) },
-                                    trailingIcon = {
-                                        Icon(
-                                            Icons.Default.Delete,
-                                            contentDescription = "Ukloni",
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                )
-                            }
-                            
-                            // Clear all button
-                            TextButton(onClick = { viewModel.clearFilters() }) {
-                                Text("Obriši sve", fontSize = 12.sp)
-                            }
-                        }
-                    }
-                }
-
-                // Group entries by day
-                val groupedEntries = remember(entries) {
-                    entries.groupBy { getDayGroup(it.timestamp) }
-                        .map { (group, entries) -> EntryGroup(group, entries) }
-                        .sortedBy { group ->
-                            when (group.group) {
-                                DayGroup.TODAY -> 0
-                                DayGroup.YESTERDAY -> 1
-                                DayGroup.THIS_WEEK -> 2
-                                DayGroup.OLDER -> 3
-                            }
-                        }
-                }
-                
-                // Calculate today entries and finance entries outside LazyColumn
-                val todayEntries = remember(entries, activeFilterCount) {
-                    if (activeFilterCount == 0) {
-                        entries.filter { getDayGroup(it.timestamp) == DayGroup.TODAY }
-                    } else {
-                        emptyList()
                     }
                 }
                 
-                val financeEntries = remember(entries, selectedCategory) {
-                    if (selectedCategory == Category.FINANCE && entries.isNotEmpty()) {
-                        entries.filter { it.category == Category.FINANCE }
-                    } else {
-                        emptyList()
-                    }
+                // Shopping deals advice - use cached results from ViewModel
+                val shoppingEntries by derivedStateOf {
+                    allEntries
+                        .filter { it.category == Category.SHOPPING }
+                        .sortedByDescending { it.timestamp }
+                        .take(1) // Only show 1 shopping advice pill
                 }
                 
-                // Entries list with grouping
-                LazyColumn(
-                    state = lazyListState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .weight(1f),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Today Summary Card (only show if no filters are active)
-                    if (todayEntries.isNotEmpty()) {
-                        item(key = "today_summary") {
-                            TodaySummaryCard(entries = todayEntries)
-                        }
+                items(
+                    items = shoppingEntries,
+                    key = { it.id }
+                ) { entry ->
+                    // Auto-hide shopping pill if shopping is completed (all items checked)
+                    val allItemsChecked = entry.shoppingItems?.isNotEmpty() == true &&
+                        entry.checkedShoppingItems?.size == entry.shoppingItems?.size
+                    
+                    if (allItemsChecked) {
+                        return@items // Skip this pill - shopping is done
                     }
                     
-                    // Finance Summary Card (conditionally displayed)
-                    if (financeEntries.isNotEmpty()) {
-                        item(key = "finance_summary") {
-                            FinanceSummaryCard(financeEntries = financeEntries)
+                    // Get cached advice (no network calls in Compose!)
+                    val shoppingAdvice = shoppingDealsCache[entry.id]
+                    val dismissedAdviceIds by viewModel.dismissedAdviceIds.collectAsState()
+                    
+                    shoppingAdvice?.let { advice ->
+                        // Skip if dismissed
+                        if (advice.id in dismissedAdviceIds) {
+                            return@let
                         }
-                    }
-                    groupedEntries.forEach { entryGroup ->
-                        // Group header
-                        item(key = "header_${entryGroup.group}") {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 12.dp, horizontal = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = entryGroup.group.label,
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    text = "${entryGroup.entries.size}",
-                                    fontSize = 14.sp,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                )
+                        var showDeleteDialog by remember { mutableStateOf(false) }
+                        AdvicePill(
+                            advice = advice,
+                            onClick = {
+                                onNavigateToAdviceDetail(advice)
+                            },
+                            onLongClick = {
+                                showDeleteDialog = true
                             }
-                            Divider(
-                                modifier = Modifier.padding(vertical = 4.dp),
-                                thickness = 1.dp,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
-                            )
-                        }
-                        
-                        // Group entries
-                        items(
-                            items = entryGroup.entries,
-                            key = { it.id }
-                        ) { entry ->
-                            val person = entry.personId?.let { personId ->
-                                persons.find { it.id == personId }
-                            } ?: entry.childId?.let { childId -> // Backward compatibility
-                                children.find { it.id == childId }?.let {
-                                    Person(it.id, it.name, emoji = it.emoji, avatarColor = it.avatarColor)
+                        )
+                        if (showDeleteDialog) {
+                            androidx.compose.material3.AlertDialog(
+                                onDismissRequest = { showDeleteDialog = false },
+                                title = { Text("Obriši savjet?") },
+                                text = { Text("Želiš li obrisati ovaj savjet?") },
+                                confirmButton = {
+                                    TextButton(
+                                        onClick = {
+                                            viewModel.dismissAdvice(advice.id)
+                                            showDeleteDialog = false
+                                        }
+                                    ) {
+                                        Text("Obriši")
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showDeleteDialog = false }) {
+                                        Text("Odustani")
+                                    }
                                 }
-                            }
-                            val entity = entry.entityId?.let { entityId ->
-                                entities.find { it.id == entityId }
-                            }
-                            LogEntryCard(
-                                entry = entry,
-                                person = person,
-                                entity = entity,
-                                viewModel = viewModel,
-                                smartHomeManager = smartHomeManager,
-                                onPersonClick = { personId ->
-                                    onNavigateToPersonProfile(personId)
-                                },
-                                onEntityClick = { entityId ->
-                                    onNavigateToEntityProfile(entityId)
-                                },
-                                onCategoryClick = { category ->
-                                    onNavigateToCategoryDetail(category)
-                                },
-                                onEditClick = onNavigateToEditEntry
                             )
                         }
                     }
+                }
+                
+                // 4. Recent Entries List
+                val sortedEntries by derivedStateOf {
+                    allEntries.sortedByDescending { it.timestamp }
+                }
+                
+                item {
+                    RecentEntriesList(
+                        entries = sortedEntries,
+                        onEntryClick = { entry ->
+                            onNavigateToEntryDetail(entry.id)
+                        },
+                        onShoppingItemChecked = { entryId, item, isChecked ->
+                            scope.launch {
+                                viewModel.updateShoppingItemChecked(entryId, item, isChecked)
+                            }
+                        },
+                        maxItems = 10
+                    )
                 }
             }
         }
         
+        // Voice input button (left side)
+        FloatingActionButton(
+            onClick = {
+                val helper = speechHelper
+                // If there's an error dialog showing, close it first
+                if (showSpeechError != null) {
+                    showSpeechError = null
+                    isListening = false
+                    helper?.stopListening()
+                    return@FloatingActionButton
+                }
+                
+                if (helper != null && !isListening) {
+                    if (helper.hasPermission()) {
+                        isListening = true
+                        helper.startListening(
+                            onResult = { text ->
+                                isListening = false
+                                if (text != null && text.isNotBlank()) {
+                                    // Automatically format as shopping list if shopping keywords are detected
+                                    val formattedText = com.familylogbook.app.domain.classifier.ShoppingListFormatter.processVoiceInput(text)
+                                    onNavigateToAddEntryWithText(formattedText)
+                                }
+                            },
+                            onError = { error ->
+                                isListening = false
+                                showSpeechError = error
+                            }
+                        )
+                    } else {
+                        requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                } else if (isListening) {
+                    // Stop listening if already listening
+                    helper?.stopListening()
+                    isListening = false
+                }
+            },
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(16.dp),
+            containerColor = if (isListening) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary
+        ) {
+            Icon(
+                if (isListening) Icons.Default.Stop else Icons.Default.RecordVoiceOver,
+                contentDescription = if (isListening) "Zaustavi snimanje" else "Glasovni unos"
+            )
+        }
+        
+        // Add entry button (right side)
         FloatingActionButton(
             onClick = onNavigateToAddEntry,
             modifier = Modifier
@@ -406,6 +544,55 @@ fun HomeScreen(
             containerColor = MaterialTheme.colorScheme.primary
         ) {
             Icon(Icons.Default.Add, contentDescription = "Dodaj zapis")
+        }
+        
+        // Speech error dialog
+        showSpeechError?.let { error ->
+            AlertDialog(
+                onDismissRequest = { showSpeechError = null },
+                title = { Text("Glasovni unos") },
+                text = { 
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(error)
+                        if (error.contains("klijenta", ignoreCase = true)) {
+                            Text(
+                                text = "\nSavjet: Pokušaj zatvoriti i ponovno otvoriti aplikaciju, ili provjeri da li Google Voice/Speech servis radi.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = { 
+                            showSpeechError = null
+                            isListening = false
+                            speechHelper?.stopListening()
+                        }
+                    ) {
+                        Text("U redu")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { 
+                            showSpeechError = null
+                            isListening = false
+                            speechHelper?.stopListening()
+                        }
+                    ) {
+                        Text("Odustani")
+                    }
+                }
+            )
+        }
+        
+        // Cleanup on dispose
+        DisposableEffect(Unit) {
+            onDispose {
+                speechHelper?.stopListening()
+            }
         }
         
         // Filter Bottom Sheet
@@ -425,7 +612,6 @@ fun HomeScreen(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LogEntryCard(
     entry: LogEntry,
@@ -440,19 +626,24 @@ fun LogEntryCard(
 ) {
     var showMenu by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showOptionsDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    @Suppress("UNUSED_VARIABLE")
+    val interactionSource = remember { MutableInteractionSource() }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Card(
+            Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .combinedClickable(
-                    onClick = { /* Regular click action if any */ },
-                    onLongClick = { showMenu = true }
-                ),
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onTap = { /* Regular tap - do nothing or show details */ },
+                        onLongPress = { showMenu = true }
+                    )
+                },
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
             shape = RoundedCornerShape(12.dp)
         ) {
@@ -552,32 +743,34 @@ fun LogEntryCard(
                         }
                     }
                 }
-            
-            // Mood indicator
-            entry.mood?.let { mood ->
-                MoodIndicator(mood = mood)
-            }
-            
-            // Temperature / Medicine info
-            entry.temperature?.let { temp ->
-                Text(
-                    text = "🌡️ Temperatura: ${temp}°C",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-            
-            // Symptoms display
-            entry.symptoms?.takeIf { it.isNotEmpty() }?.let { symptomsList ->
-                Text(
-                    text = "🏥 Simptomi: ${symptomsList.joinToString(", ")}",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-            
+                
+                // Mood indicator
+                entry.mood?.let { mood ->
+                    MoodIndicator(mood = mood)
+                }
+                
+                // Temperature / Medicine info
+                entry.temperature?.let { temp ->
+                    Text(
+                        text = "🌡️ Temperatura: ${temp}°C",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                
+                // Symptoms display
+                entry.symptoms?.takeIf { it.isNotEmpty() }?.let { symptomsList ->
+                    Text(
+                        text = "🏥 Simptomi: ${symptomsList.joinToString(", ")}",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                
+                // Only show medicine info for HEALTH category
+                if (entry.category == Category.HEALTH) {
                     entry.medicineGiven?.let { medicine ->
                         Column(
                             modifier = Modifier.padding(top = 4.dp),
@@ -621,66 +814,90 @@ fun LogEntryCard(
                             }
                         }
                     }
-            
-            // Feeding info
-            entry.feedingType?.let { feedingType ->
-                val feedingText = when (feedingType) {
-                    com.familylogbook.app.domain.model.FeedingType.BREAST_LEFT -> "🍼 Dojenje (lijeva)"
-                    com.familylogbook.app.domain.model.FeedingType.BREAST_RIGHT -> "🍼 Dojenje (desna)"
-                    com.familylogbook.app.domain.model.FeedingType.BOTTLE -> "🍼 Bočica${entry.feedingAmount?.let { " - ${it}ml" } ?: ""}"
                 }
-                Text(
-                    text = feedingText,
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.tertiary,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-            
-            // Smart Home action button
-            if (entry.category == Category.SMART_HOME) {
-                var showErrorDialog by remember { mutableStateOf<String?>(null) }
                 
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(
-                    onClick = {
-                        // Execute command directly - no user voice input needed
-                        val result = smartHomeManager.executeCommand(entry.rawText)
-                        when (result) {
-                            is com.familylogbook.app.data.smarthome.SmartHomeManager.CommandResult.Success -> {
-                                // Command sent successfully
-                            }
-                            is com.familylogbook.app.data.smarthome.SmartHomeManager.CommandResult.Error -> {
-                                showErrorDialog = result.message
-                            }
+                // Only show feeding info for FEEDING category
+                if (entry.category == Category.FEEDING) {
+                    entry.feedingType?.let { feedingType ->
+                        val feedingText = when (feedingType) {
+                            com.familylogbook.app.domain.model.FeedingType.BREAST_LEFT -> "🍼 Dojenje (lijeva)"
+                            com.familylogbook.app.domain.model.FeedingType.BREAST_RIGHT -> "🍼 Dojenje (desna)"
+                            com.familylogbook.app.domain.model.FeedingType.BOTTLE -> "🍼 Bočica${entry.feedingAmount?.let { " - ${it}ml" } ?: ""}"
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.tertiary
-                    )
-                ) {
-                    Text("🤖 Pošalji komandu")
+                        Text(
+                            text = feedingText,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
                 }
                 
-                // Error dialog
-                showErrorDialog?.let { errorMessage ->
-                    androidx.compose.material3.AlertDialog(
-                        onDismissRequest = { showErrorDialog = null },
-                        title = { Text("Ne mogu poslati komandu") },
-                        text = { Text(errorMessage) },
-                        confirmButton = {
-                            TextButton(onClick = { showErrorDialog = null }) {
-                                Text("U redu")
+                // Shopping list with checkboxes
+                if (entry.category == Category.SHOPPING && entry.shoppingItems != null && entry.shoppingItems.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    com.familylogbook.app.ui.component.ShoppingListCard(
+                        items = entry.shoppingItems,
+                        checkedItems = entry.checkedShoppingItems ?: emptySet(),
+                        onItemChecked = { item, isChecked ->
+                            scope.launch {
+                                viewModel.updateShoppingItemChecked(entry.id, item, isChecked)
                             }
                         }
                     )
                 }
+                
+                // Vaccination info
+                entry.vaccinationName?.let { vaccinationName ->
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "💉 Cjepivo: $vaccinationName",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            entry.nextVaccinationMessage?.let { message ->
+                                Text(
+                                    text = message,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                    }
+                }
+                
+                // Smart Home action button
+                if (entry.category == Category.SMART_HOME) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            showOptionsDialog = true
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.tertiary
+                        )
+                    ) {
+                        Text("🤖 Izvrši komandu")
+                    }
+                }
             }
-        }
         }
         
-        // Context Menu (DropdownMenu)
+        // Context Menu (DropdownMenu) - triggered by long press
         Box {
             DropdownMenu(
                 expanded = showMenu,
@@ -713,6 +930,89 @@ fun LogEntryCard(
             }
         }
         
+        // Smart Home Options Dialog - korisnik bira kako želi izvršiti komandu
+        if (entry.category == Category.SMART_HOME && showOptionsDialog) {
+            val dialogContext = LocalContext.current
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showOptionsDialog = false },
+                title = { Text("💡 Odaberi kako želiš izvršiti komandu") },
+                text = {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Google Home app opcija (prioritet)
+                        val isHomeInstalled = smartHomeManager.isGoogleHomeAppInstalled()
+                        android.util.Log.d("HomeScreen", "Google Home app installed: $isHomeInstalled")
+                        
+                        // Uvijek prikaži opciju za Google Home app - pokušaj otvoriti ili instalirati
+                        OutlinedButton(
+                            onClick = {
+                                showOptionsDialog = false
+                                // Pokušaj otvoriti Google Home app direktno
+                                val opened = smartHomeManager.openGoogleHomeApp()
+                                if (!opened) {
+                                    // Ako ne može otvoriti, pokušaj otvoriti Play Store
+                                    try {
+                                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                                            data = Uri.parse("market://details?id=com.google.android.apps.chromecast.app")
+                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                        }
+                                        dialogContext.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        // Fallback to browser
+                                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                                            data = Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.chromecast.app")
+                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                        }
+                                        dialogContext.startActivity(intent)
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = if (isHomeInstalled) "🏠 Google Home app" else "🏠 Otvori Google Home app",
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Text(
+                            text = if (isHomeInstalled) {
+                                "   Direktna kontrola uređaja bez glasovnih komandi"
+                            } else {
+                                "   Ako nije instaliran, otvorit će se Play Store"
+                            },
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        )
+                        
+                        // Divider
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        // Gemini / Google Assistant opcija (fallback)
+                        OutlinedButton(
+                            onClick = {
+                                showOptionsDialog = false
+                                smartHomeManager.executeCommand(entry.rawText)
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("🤖 Gemini / Google Assistant")
+                        }
+                        Text(
+                            text = "   Glasovna komanda (fallback opcija)",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showOptionsDialog = false }) {
+                        Text("Odustani")
+                    }
+                }
+            )
+        }
+        
         // Delete confirmation dialog
         if (showDeleteDialog) {
             AlertDialog(
@@ -739,13 +1039,58 @@ fun LogEntryCard(
             )
         }
         
-        // Advice Card (if applicable)
-        viewModel.getAdviceForEntry(entry)?.let { advice ->
-            Spacer(modifier = Modifier.height(8.dp))
-            AdviceCard(
-                advice = advice,
-                category = entry.category
-            )
+        // Advice Card - show for relevant categories
+        // For SHOPPING: show shopping deals advice (async)
+        // For OTHER: don't show advice
+        // For other categories: show regular advice
+        when (entry.category) {
+            Category.SHOPPING -> {
+                // Show shopping deals advice if available
+                var shoppingAdvice by remember { mutableStateOf<com.familylogbook.app.domain.model.AdviceTemplate?>(null) }
+                var isLoadingShoppingAdvice by remember { mutableStateOf(false) }
+                
+                LaunchedEffect(entry.id) {
+                    if (!isLoadingShoppingAdvice && shoppingAdvice == null) {
+                        isLoadingShoppingAdvice = true
+                        shoppingAdvice = viewModel.getShoppingDealsAdvice(entry)
+                        isLoadingShoppingAdvice = false
+                    }
+                }
+                
+                shoppingAdvice?.let { advice ->
+                    Spacer(modifier = Modifier.height(8.dp))
+                    AdviceCard(
+                        advice = advice,
+                        category = entry.category
+                    )
+                }
+            }
+            Category.OTHER -> {
+                // Don't show advice for OTHER category
+            }
+            else -> {
+                // Show regular advice for other categories
+                val advice = remember(entry.id) {
+                    viewModel.getAdviceForEntry(entry)
+                }
+                advice?.let { adv ->
+                    // Additional check: Don't show feeding/health advice for non-relevant categories
+                    val isRelevantAdvice = when (adv.id) {
+                        "feeding" -> entry.category == Category.FEEDING
+                        "fever", "colic", "crying" -> entry.category == Category.HEALTH
+                        "sleep_trouble", "soothing" -> entry.category == Category.SLEEP || entry.category == Category.MOOD
+                        else -> true // Allow other advice types for their categories
+                    }
+                    
+                    if (isRelevantAdvice) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        AdviceCard(
+                            advice = adv,
+                            category = entry.category
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -814,330 +1159,63 @@ fun EmptyState(
     onAddEntry: () -> Unit
 ) {
     Column(
-        modifier = modifier,
+        modifier = modifier.padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
+        // Large emoji/icon
+        Text(
+            text = "📝",
+            fontSize = 64.sp
+        )
+        
         Text(
             text = "Još nema zapisa",
-            fontSize = 20.sp,
+            fontSize = 24.sp,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            color = MaterialTheme.colorScheme.onSurface
         )
+        
         Text(
-            text = "Dodaj svoj prvi zapis da počneš!",
+            text = "Dodaj svoj prvi zapis da počneš praćenje obiteljskog života!",
             fontSize = 14.sp,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
         )
-        Button(onClick = onAddEntry) {
+        
+        Button(
+            onClick = onAddEntry,
+            modifier = Modifier.padding(top = 8.dp)
+        ) {
             Icon(Icons.Default.Add, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Dodaj zapis")
-        }
-    }
-}
-
-@Composable
-fun SearchBar(
-    query: String,
-    onQueryChange: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    OutlinedTextField(
-        value = query,
-        onValueChange = onQueryChange,
-        modifier = modifier,
-        placeholder = { Text("Pretraži zapise...") },
-        leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Pretraži") },
-        singleLine = true,
-        shape = RoundedCornerShape(12.dp)
-    )
-}
-
-@Composable
-fun TodaySummaryCard(entries: List<LogEntry>) {
-    if (entries.isEmpty()) return
-    
-    // Calculate statistics (entries are already filtered to today)
-    val sleepEntries = entries.filter { it.category == Category.SLEEP }
-    val feedingEntries = entries.filter { it.category == Category.FEEDING }
-    val temperatureEntries = entries.filter { it.temperature != null }
-    
-    // Calculate sleep hours (try to extract from text or estimate)
-    val sleepHours = remember(sleepEntries) {
-        var totalHours = 0.0
-        sleepEntries.forEach { entry ->
-            // Try to extract sleep duration from text
-            val text = entry.rawText.lowercase()
-            
-            // Patterns like "spavao 8 sati", "spavali 7h", "slept 6 hours"
-            val hourPatterns = listOf(
-                Regex("""(?:spava|spav|slept).*?(\d+(?:\.\d+)?)\s*(?:sati|h|hours|hour)""", RegexOption.IGNORE_CASE),
-                Regex("""(\d+(?:\.\d+)?)\s*(?:sati|h|hours|hour).*?(?:spava|sleep)""", RegexOption.IGNORE_CASE),
-            )
-            
-            var found = false
-            for (pattern in hourPatterns) {
-                val match = pattern.find(text)
-                if (match != null) {
-                    val hours = match.groupValues[1].toDoubleOrNull()
-                    if (hours != null && hours > 0 && hours <= 24) {
-                        totalHours += hours
-                        found = true
-                        break
-                    }
-                }
-            }
-            
-            // If no explicit duration found, try to estimate from nap patterns
-            if (!found) {
-                if (text.contains("dnevni san") || text.contains("nap")) {
-                    totalHours += 1.5 // Typical nap duration
-                } else if (text.contains("noćni san") || text.contains("noć")) {
-                    totalHours += 8.0 // Typical night sleep
-                }
-            }
+            Text("Dodaj zapis")
         }
         
-        if (totalHours > 0) {
-            String.format("%.1f", totalHours)
-        } else if (sleepEntries.isNotEmpty()) {
-            "${sleepEntries.size}x" // Just show count if can't calculate hours
-        } else {
-            null
-        }
-    }
-    
-    // Calculate total feeding amount (bottle)
-    val totalFeedingAmount = feedingEntries
-        .filter { it.feedingAmount != null }
-        .sumOf { it.feedingAmount ?: 0 }
-    
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
+        // Quick tips
+        Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(top = 16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            )
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "📊 Današnji pregled",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-                Text(
-                    text = "${entries.size} zapisa",
+                    text = "💡 Savjeti:",
                     fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                )
-            }
-            
-            // Statistics row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                // Sleep
-                if (sleepEntries.isNotEmpty()) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            text = "😴",
-                            fontSize = 24.sp
-                        )
-                        Text(
-                            text = "Spavanje",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                        )
-                        Text(
-                            text = sleepHours ?: "${sleepEntries.size}x",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        if (sleepHours != null) {
-                            Text(
-                                text = "sati",
-                                fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
-                            )
-                        }
-                    }
-                }
-                
-                // Feeding
-                if (feedingEntries.isNotEmpty()) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            text = "🍼",
-                            fontSize = 24.sp
-                        )
-                        Text(
-                            text = "Hranjenja",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                        )
-                        Text(
-                            text = "${feedingEntries.size}",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        if (totalFeedingAmount > 0) {
-                            Text(
-                                text = "${totalFeedingAmount}ml",
-                                fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
-                            )
-                        }
-                    }
-                }
-                
-                // Temperature
-                if (temperatureEntries.isNotEmpty()) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            text = "🌡️",
-                            fontSize = 24.sp
-                        )
-                        Text(
-                            text = "Temperature",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                        )
-                        Text(
-                            text = "${temperatureEntries.size}",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        temperatureEntries.firstOrNull()?.temperature?.let { temp ->
-                            Text(
-                                text = String.format("%.1f°C", temp),
-                                fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun FinanceSummaryCard(financeEntries: List<LogEntry>) {
-    
-    if (financeEntries.isEmpty()) return
-    
-    val totalAmount = financeEntries.sumOf { it.amount ?: 0.0 }
-    val currency = financeEntries.firstOrNull()?.currency ?: "€"
-    val entryCount = financeEntries.size
-    
-    // Group by currency if multiple currencies exist
-    val amountsByCurrency = financeEntries
-        .groupBy { it.currency ?: "€" }
-        .mapValues { (_, entries) -> entries.sumOf { it.amount ?: 0.0 } }
-    
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "💰 Finance Summary",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                    fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = "$entryCount entries",
-                    fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                    text = "• Koristi glasovni unos za brže dodavanje\n• Dodaj osobe u postavkama\n• Kategorije se automatski detektiraju",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
-            }
-            
-            if (amountsByCurrency.size == 1) {
-                // Single currency
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "Total:",
-                        fontSize = 16.sp,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                    Text(
-                        text = String.format("%.2f %s", totalAmount, currency),
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            } else {
-                // Multiple currencies
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    amountsByCurrency.forEach { (curr, amount) ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Total ($curr):",
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                            Text(
-                                text = String.format("%.2f %s", amount, curr),
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                }
             }
         }
     }
@@ -1301,17 +1379,105 @@ fun FilterBottomSheet(
     }
 }
 
+@Composable
+fun ActiveTimerCard(
+    timer: com.familylogbook.app.domain.timer.TimerManager.TimerInfo,
+    onCancel: () -> Unit
+) {
+    val now = System.currentTimeMillis()
+    val remainingMillis = timer.endTime - now
+    val remainingMinutes = (remainingMillis / (60 * 1000)).toInt().coerceAtLeast(0)
+    val remainingSeconds = ((remainingMillis % (60 * 1000)) / 1000).toInt().coerceAtLeast(0)
+    
+    // Auto-remove timer if expired
+    LaunchedEffect(timer.id) {
+        if (remainingMillis <= 0) {
+            onCancel()
+        }
+    }
+    
+    // Update every second
+    var currentTime by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(timer.id) {
+        while (currentTime < timer.endTime) {
+            kotlinx.coroutines.delay(1000)
+            currentTime = System.currentTimeMillis()
+            if (currentTime >= timer.endTime) {
+                onCancel()
+                break
+            }
+        }
+    }
+    
+    val displayMinutes = (timer.endTime - currentTime).let { 
+        (it / (60 * 1000)).toInt().coerceAtLeast(0) 
+    }
+    val displaySeconds = (timer.endTime - currentTime).let { 
+        ((it % (60 * 1000)) / 1000).toInt().coerceAtLeast(0) 
+    }
+    
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.7f)
+        ),
+        border = BorderStroke(2.dp, MaterialTheme.colorScheme.tertiary)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "⏰ Timer aktivan",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.tertiary
+                )
+                Text(
+                    text = String.format("%02d:%02d", displayMinutes, displaySeconds),
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.tertiary
+                )
+                timer.description?.let { desc ->
+                    Text(
+                        text = desc,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                }
+            }
+            IconButton(onClick = onCancel) {
+                Icon(
+                    Icons.Default.Stop,
+                    contentDescription = "Zaustavi timer",
+                    tint = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+    }
+}
+
 fun formatTimestamp(timestamp: Long): String {
     val now = System.currentTimeMillis()
     val diff = now - timestamp
     
     return when {
-        diff < 60_000 -> "Just now"
-        diff < 3600_000 -> "${diff / 60_000}m ago"
-        diff < 86400_000 -> "${diff / 3600_000}h ago"
-        diff < 604800_000 -> "${diff / 86400_000}d ago"
+        diff < 60_000 -> "Upravo sada"
+        diff < 3600_000 -> "Prije ${diff / 60_000} min"
+        diff < 86400_000 -> "Prije ${diff / 3600_000} h"
+        diff < 604800_000 -> "Prije ${diff / 86400_000} d"
         else -> {
-            val sdf = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
+            val sdf = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
             sdf.format(Date(timestamp))
         }
     }

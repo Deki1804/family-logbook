@@ -14,12 +14,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.familylogbook.app.domain.model.Child
+import com.familylogbook.app.domain.model.Person
 import com.familylogbook.app.domain.model.FeedingType
 
 @Composable
 fun QuickFeedingButtons(
-    children: List<Child>,
+    children: List<Person>, // List of CHILD type persons for feeding tracking
     selectedChildId: String?,
     onSelectChild: (String?) -> Unit,
     onStartFeeding: (FeedingType) -> Unit,
@@ -49,6 +49,17 @@ fun QuickFeedingButtons(
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
+            } else {
+                // Show selected person name
+                val selectedPerson = children.find { it.id == selectedChildId }
+                selectedPerson?.let { person ->
+                    Text(
+                        text = "Odabrano: ${person.emoji} ${person.name}",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
             
             Row(

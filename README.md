@@ -4,7 +4,7 @@
 
 ## 🌟 O aplikaciji
 
-FamilyOS (ranije Family Logbook) je sveobuhvatna Android aplikacija za upravljanje obiteljskim životom. Aplikacija omogućava roditeljima i članovima obitelji da lakše prate važne aspekte djece i obiteljskog života kroz jedinstveno sučelje.
+FamilyOS je sveobuhvatna Android aplikacija za upravljanje obiteljskim životom. Aplikacija omogućava roditeljima i članovima obitelji da lakše prate važne aspekte djece i obiteljskog života kroz jedinstveno sučelje.
 
 **Trenutna verzija:** v0.9 (Interni beta)
 
@@ -103,7 +103,7 @@ app/src/main/java/com/familylogbook/app/
 
 ```bash
 git clone <repo-url>
-cd "Family Logbook"
+cd "FamilyOS"
 ```
 
 ### 2. Otvori projekt u Android Studio
@@ -135,6 +135,8 @@ Kopiraj pravila iz `firestore.rules` u Firebase Console → Firestore Database �
 
 ## 📚 Dokumentacija
 
+- **[PROJECT_STATUS.md](PROJECT_STATUS.md)** ⭐ - **Status projekta, što smo radili, plan rada** (AŽURIRANO 2025-12-08)
+- **[COMPREHENSIVE_REVIEW.md](COMPREHENSIVE_REVIEW.md)** - Detaljni pregled koda i arhitekture
 - **[TODO_v1.0.md](TODO_v1.0.md)** - Konkretne akcije i checklist za v1.0
 - **[BUILD_APK.md](BUILD_APK.md)** - Upute za kreiranje APK-a
 - **[PRIVACY_POLICY.md](PRIVACY_POLICY.md)** - Pravila privatnosti
@@ -165,6 +167,8 @@ Lokacija: Settings → Export & Import
 
 ## 🎯 Trenutno stanje (v0.9)
 
+> **📌 Za najnovije informacije o statusu projekta, pogledaj [PROJECT_STATUS.md](PROJECT_STATUS.md)**
+
 ### ✅ Što radi
 
 - ✅ Firestore integracija (per-user storage)
@@ -176,10 +180,15 @@ Lokacija: Settings → Export & Import
 - ✅ Entity Profiles (Auto, Kuća, Financije)
 - ✅ Symptom Helper
 - ✅ Bogat domain model za sve aspekte obiteljskog života
+- ✅ **NOVO:** Home Screen redesign (FamilyOS kontrolni centar)
+- ✅ **NOVO:** Shopping Deals integracija (Google Custom Search API)
+- ✅ **NOVO:** AI-powered savjeti i advice pills
+- ✅ **NOVO:** Dinamički prikaz kartica (ImportantCardsGrid)
 
 ### 🔄 U razvoju
 
-- 🔄 README i Branding (trenutno)
+- 🔄 AdviceDetailScreen crash fix (prioritet)
+- 🔄 Shopping deals optimizacija (cache mehanizam)
 - 🔄 Auth & Login Flow poboljšanja
 - 🔄 Notifikacije Runtime Permission (Android 13+)
 - 🔄 Export/Import proširenje (aiAdvice, symptoms)
@@ -187,9 +196,9 @@ Lokacija: Settings → Export & Import
 ### 📅 Planirano za v1.0
 
 - 📅 Onboarding flow
-- 📅 Today Summary na Home screen
-- 📅 UX poboljšanja
-- 📅 Error handling
+- 📅 UX polish i finalizacija
+- 📅 Error handling poboljšanja
+- 📅 Performance optimizacije
 
 ## 🗺️ Roadmap
 

@@ -21,18 +21,14 @@ class ReminderWorker(
     
     override suspend fun doWork(): Result {
         return try {
-            // Get repository - get userId from shared preferences
-            val sharedPrefs = applicationContext.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-            val userId = sharedPrefs.getString("user_id", null)
-            
-            val repository: LogbookRepository = if (userId != null) {
-                try {
-                    FirestoreLogbookRepository(userId = userId)
-                } catch (e: Exception) {
-                    InMemoryLogbookRepository()
-                }
-            } else {
-                InMemoryLogbookRepository()
+            // Get repository - it uses FirebaseAuth dynamically
+            // If user is not authenticated, it will throw exception and we'll skip notifications
+            val repository: LogbookRepository = try {
+                FirestoreLogbookRepository()
+            } catch (e: Exception) {
+                // User not authenticated or Firebase not available - skip notifications
+                android.util.Log.d("ReminderWorker", "User not authenticated, skipping reminders")
+                return Result.success()
             }
             
             val now = System.currentTimeMillis()
@@ -48,14 +44,29 @@ class ReminderWorker(
             // Helper function to check if person is a baby (less than 2 years old)
             fun isBabyAge(dateOfBirth: Long?): Boolean {
                 if (dateOfBirth == null) return false
-                val ageInDays = (now - dateOfBirth) / (1000.0 * 60 * 60 * 24)
-                return ageInDays < 730 // Less than 2 years
+                return com.familylogbook.app.domain.util.PersonAgeUtils.canHaveFeeding(dateOfBirth)
             }
             
-            // Group feeding entries by person
+            // Group feeding entries by person - ONLY if person exists and is a CHILD type
             val feedingEntriesByPerson = entries
-                .filter { it.category == com.familylogbook.app.domain.model.Category.FEEDING }
-                .groupBy { it.personId ?: it.childId }
+                .filter { entry ->
+                    entry.category == com.familylogbook.app.domain.model.Category.FEEDING &&
+                    entry.personId != null && // Must have personId
+                    entry.feedingType != null // Must have explicit feeding type (not just detected from text)
+                }
+                .mapNotNull { entry ->
+                    val personId = entry.personId ?: entry.childId
+                    val person = personId?.let { persons.find { it.id == personId } }
+                    // Only include if person exists, is a CHILD, and has dateOfBirth
+                    if (person != null && 
+                        person.type == com.familylogbook.app.domain.model.PersonType.CHILD &&
+                        person.dateOfBirth != null) {
+                        personId to entry
+                    } else {
+                        null
+                    }
+                }
+                .groupBy({ it.first }, { it.second })
             
             // Check feeding reminders (if last feeding > 3 hours for babies)
             feedingEntriesByPerson.forEach { (personId, personFeedings) ->
@@ -64,16 +75,16 @@ class ReminderWorker(
                     lastFeeding?.let { feeding ->
                         val hoursSinceLastFeeding = (now - feeding.timestamp) / (1000.0 * 60 * 60)
                         
-                        // Find person to check age
+                        // Find person to check age (should exist since we filtered above)
                         val person = persons.find { it.id == personId }
                         val isBaby = person?.dateOfBirth?.let { isBabyAge(it) } ?: false
                         
-                        // Show reminder for babies if last feeding was:
+                        // Show reminder ONLY for babies (< 2 years old)
                         // - 3-6 hours ago (normal reminder window)
                         // - 6+ hours ago (urgent reminder)
-                        if (isBaby) {
+                        if (isBaby && person != null) {
                             if (hoursSinceLastFeeding >= 3.0 && hoursSinceLastFeeding <= 6.0) {
-                                val personName = person?.name ?: "Beba"
+                                val personName = person.name
                                 notificationManager.showFeedingReminder(
                                     personName = personName,
                                     hoursSinceLastFeeding = hoursSinceLastFeeding,
@@ -81,7 +92,7 @@ class ReminderWorker(
                                 )
                             } else if (hoursSinceLastFeeding > 6.0 && hoursSinceLastFeeding <= 8.0) {
                                 // Urgent reminder - haven't fed in 6+ hours
-                                val personName = person?.name ?: "Beba"
+                                val personName = person.name
                                 notificationManager.showFeedingReminder(
                                     personName = personName,
                                     hoursSinceLastFeeding = hoursSinceLastFeeding,
@@ -99,14 +110,55 @@ class ReminderWorker(
                     val timeUntilNext = nextTime - now
                     // Show notification if it's time (within 5 minutes) or overdue
                     if (timeUntilNext <= 5 * 60 * 1000L && timeUntilNext >= -30 * 60 * 1000L) {
-                        val personName = entry.personId?.let { 
-                            // Try to get person name - for now just use entry text
-                            null // TODO: Fetch person name from repository
-                        }
+                        val personName = entry.personId?.let { personId ->
+                            persons.find { it.id == personId }?.name
+                        } ?: entry.childId?.let { childId ->
+                            // Legacy child support - try to find as person with same ID
+                            persons.find { it.id == childId }?.name ?: "Osoba"
+                        } ?: null
                         notificationManager.showMedicineReminder(
-                            medicineName = entry.medicineGiven ?: "Medicine",
+                            medicineName = entry.medicineGiven ?: "Lijek",
                             personName = personName,
                             notificationId = entry.id.hashCode()
+                        )
+                    }
+                }
+                
+                // Check vaccination reminders
+                entry.nextVaccinationDate?.let { vaccinationDate ->
+                    val timeUntilVaccination = vaccinationDate - now
+                    val personName = entry.personId?.let { personId ->
+                        persons.find { it.id == personId }?.name
+                    } ?: entry.childId?.let { childId ->
+                        persons.find { it.id == childId }?.name ?: "Dijete"
+                    } ?: "Dijete"
+                    
+                    // Show notification 7 days before
+                    if (timeUntilVaccination > 0 && timeUntilVaccination <= 7 * oneDayInMillis && 
+                        timeUntilVaccination > 6 * oneDayInMillis) {
+                        notificationManager.showServiceReminder(
+                            serviceName = "Cjepivo",
+                            reminderText = entry.nextVaccinationMessage ?: "Vrijeme je za sljedeće cjepivo za $personName. Naruči se kod pedijatra.",
+                            notificationId = (entry.id + "_vaccination_7days").hashCode()
+                        )
+                    }
+                    
+                    // Show notification 1 day before
+                    if (timeUntilVaccination > 0 && timeUntilVaccination <= oneDayInMillis && 
+                        timeUntilVaccination > oneDayInMillis - oneHourInMillis) {
+                        notificationManager.showServiceReminder(
+                            serviceName = "Cjepivo",
+                            reminderText = entry.nextVaccinationMessage ?: "Sutra je termin za cjepivo za $personName.",
+                            notificationId = (entry.id + "_vaccination_1day").hashCode()
+                        )
+                    }
+                    
+                    // Show notification on the day or if overdue (within 2 hours window)
+                    if (timeUntilVaccination <= 2 * oneHourInMillis && timeUntilVaccination >= -2 * oneHourInMillis) {
+                        notificationManager.showServiceReminder(
+                            serviceName = "Cjepivo",
+                            reminderText = entry.nextVaccinationMessage ?: "Danas je termin za cjepivo za $personName.",
+                            notificationId = (entry.id + "_vaccination_today").hashCode()
                         )
                     }
                 }

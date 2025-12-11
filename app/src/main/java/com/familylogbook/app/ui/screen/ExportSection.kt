@@ -63,7 +63,7 @@ fun ExportSection(viewModel: SettingsViewModel) {
                             showImportDialog = true
                         }
                     } catch (e: Exception) {
-                        importResult = "Greška pri čitanju datoteke: ${e.message}"
+                        importResult = "Greška pri čitanju datoteke: ${com.familylogbook.app.ui.util.ErrorHandler.getFriendlyErrorMessage(e)}"
                         showImportDialog = true
                     }
                 }

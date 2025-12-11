@@ -1,30 +1,57 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users mogu čitati/pisati samo svoje podatke
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if authenticated user owns this user document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Users collection structure: /users/{userId}/...
     match /users/{userId} {
-      // Korisnik mora biti autentificiran i mora biti vlasnik svojih podataka
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      // Allow read/write to the user document itself (if it exists)
+      // This allows creating/updating user metadata if needed
+      allow read, write: if isOwner(userId);
       
-      // Persons collection
+      // Persons subcollection: /users/{userId}/persons/{personId}
       match /persons/{personId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read, write: if isOwner(userId);
+        allow list: if isOwner(userId);
       }
       
-      // Entities collection
+      // Entities subcollection: /users/{userId}/entities/{entityId}
       match /entities/{entityId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read, write: if isOwner(userId);
+        allow list: if isOwner(userId);
       }
       
-      // Entries collection
+      // Entries subcollection: /users/{userId}/entries/{entryId}
       match /entries/{entryId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read, write: if isOwner(userId);
+        allow list: if isOwner(userId);
       }
       
-      // Legacy: Children collection (backward compatibility)
+      // Legacy: Children subcollection (backward compatibility)
+      // /users/{userId}/children/{childId}
       match /children/{childId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read, write: if isOwner(userId);
+        allow list: if isOwner(userId);
       }
+      
+      // Catch-all for any other subcollections (future-proofing)
+      // This ensures any future subcollections work automatically
+      match /{document=**} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+    
+    // Default deny rule for any other paths
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

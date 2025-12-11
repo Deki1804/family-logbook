@@ -22,17 +22,32 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Gemini API key - postavi u gradle.properties ili lokalno
+            buildConfigField("String", "GEMINI_API_KEY", "\"${project.findProperty("GEMINI_API_KEY") ?: ""}\"")
+            // Google Custom Search API key and Engine ID
+            buildConfigField("String", "GOOGLE_CSE_API_KEY", "\"${project.findProperty("GOOGLE_CSE_API_KEY") ?: ""}\"")
+            buildConfigField("String", "GOOGLE_CSE_ENGINE_ID", "\"${project.findProperty("GOOGLE_CSE_ENGINE_ID") ?: ""}\"")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Gemini API key - postavi u gradle.properties ili lokalno
+            buildConfigField("String", "GEMINI_API_KEY", "\"${project.findProperty("GEMINI_API_KEY") ?: ""}\"")
+            // Google Custom Search API key and Engine ID
+            buildConfigField("String", "GOOGLE_CSE_API_KEY", "\"${project.findProperty("GOOGLE_CSE_API_KEY") ?: ""}\"")
+            buildConfigField("String", "GOOGLE_CSE_ENGINE_ID", "\"${project.findProperty("GOOGLE_CSE_ENGINE_ID") ?: ""}\"")
         }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlin {
+        jvmToolchain(17)
     }
     kotlinOptions {
         jvmTarget = "17"
@@ -42,6 +57,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.8"
@@ -88,8 +104,17 @@ dependencies {
     // Firestore
     implementation("com.google.firebase:firebase-firestore-ktx")
     
-    // Firebase Auth (za kasnije)
+    // Firebase Auth
     implementation("com.google.firebase:firebase-auth-ktx")
+    
+    // Google Sign-In
+    implementation("com.google.android.gms:play-services-auth:20.7.0")
+    
+    // Google Gemini API for shopping deals checking
+    implementation("com.google.ai.client.generativeai:generativeai:0.6.0")
+    
+    // OkHttp for HTTP requests (Google Custom Search API)
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

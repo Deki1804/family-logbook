@@ -21,10 +21,7 @@ class InMemoryLogbookRepository : LogbookRepository {
     private val _persons = MutableStateFlow<List<Person>>(emptyList())
     private val _entities = MutableStateFlow<List<Entity>>(emptyList())
     
-    init {
-        // Seed with sample data
-        seedSampleData()
-    }
+    // Sample data seeding removed - repository starts empty
     
     override fun getAllEntries(): Flow<List<LogEntry>> = _entries.asStateFlow()
     
@@ -88,6 +85,10 @@ class InMemoryLogbookRepository : LogbookRepository {
         return _entities.value.find { it.id == entityId }
     }
     
+    // Sample data seeding removed - users start with empty repository
+    // If you need test data, use SettingsScreen reset with sample option
+    // Function commented out - uncomment if needed for testing
+    /*
     private fun seedSampleData() {
         val now = System.currentTimeMillis()
         val calendar = Calendar.getInstance()
@@ -462,5 +463,6 @@ class InMemoryLogbookRepository : LogbookRepository {
             entry10, entry9, entry8, entry7, entry6, entry5, entry4, entry3, entry2, entry1
         ).sortedByDescending { it.timestamp }
     }
+    */
 }
 
