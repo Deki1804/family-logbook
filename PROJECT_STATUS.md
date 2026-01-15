@@ -1,4 +1,4 @@
-# Family Logbook - Status Projekta i Plan
+# Parent OS - Status Projekta i Plan
 
 **Datum ažuriranja:** 2025-12-08  
 **Status:** U razvoju - Beta verzija
@@ -19,19 +19,18 @@
 
 ## 🎯 Pregled projekta
 
-**Family Logbook** je Android aplikacija za vođenje obiteljskog dnevnika. Omogućava korisnicima da:
-- Bilježe događaje, podsjetnike i aktivnosti za članove obitelji
-- Prate zdravlje djece (cjepiva, bolesti, razvoj)
-- Upravljaju financijama, shopping listama, entitetima (kuća, auto, itd.)
-- Dobivaju AI-powered savjete i shopping deals
-- Integriraju se sa Smart Home sustavima
+**Parent OS** je Android aplikacija fokusirana na **zdravlje djece** (0–8 godina). Omogućava korisnicima da:
+- Bilježe zdravstvene događaje (lijekovi, simptomi, temperatura)
+- Prate cjepiva i preporuke sljedećih cjepiva
+- Vode dnevne obaveze (checklist/podsjetnici)
+- Koriste podsjetnike (lijekovi, hranjenje za bebe)
+- Rade backup/restore (JSON/CSV)
 
 **Tehnologije:**
 - Kotlin + Jetpack Compose (Material3)
 - Firebase (Authentication + Firestore)
 - MVVM arhitektura
 - WorkManager za notifikacije
-- Google Custom Search API za shopping deals
 
 ---
 
@@ -56,11 +55,7 @@
 
 ### 3. **AI-powered funkcionalnosti**
 - **AdviceEngine** - generira savjete na temelju unosa
-- **Shopping Deals integracija** - Google Custom Search API za pronalaženje akcija
-  - Automatska ekstrakcija shopping artikala iz teksta
-  - Pretraga akcija na hrvatskim trgovinama (Kaufland, Konzum, Spar, Lidl, Plodine)
-  - Strukturirani prikaz: artikal – trgovina – cijena
-  - Cache mehanizam za optimizaciju API poziva
+  - Parent OS: savjeti su fokusirani na health kategorije (bez shopping/smart-home feature-a)
 
 ### 4. **Navigacija i routing**
 - Implementiran Navigation Compose
@@ -71,9 +66,7 @@
   - `onEditEntryClick` → Edit screen
 
 ### 5. **Smart Home integracija**
-- Refaktoriran `SmartHomeManager`
-- Direktno pokretanje Google Home app-a (ako je instaliran)
-- Fallback na Play Store ako app nije instaliran
+Uklonjeno iz Parent OS scope-a (legacy FamilyOS feature).
 
 ### 6. **Optimizacije i bug fixovi**
 - **Shopping deals API optimizacija:**
@@ -115,16 +108,15 @@
 ### Funkcionalno
 ✅ **Home Screen** - potpuno funkcionalan, moderni dizajn  
 ✅ **Entry management** - CRUD operacije rade  
-✅ **Shopping deals** - API integracija radi, cache implementiran  
 ✅ **Advice system** - generiranje i prikaz savjeta radi  
 ✅ **Navigation** - osnovna navigacija radi  
-✅ **Smart Home** - direktno pokretanje app-a radi  
 ✅ **Firebase Auth** - Google sign-in radi  
 ✅ **Firestore** - sve operacije rade  
+✅ **Export/Import** - JSON/CSV radi (uključuje DOB i health polja)  
+✅ **Timer** - radi preko WorkManager (bez exact-alarm permisija)  
 
 ### U razvoju / Potrebno testirati
 ⚠️ **AdviceDetailScreen navigacija** - nedavno popravljena, treba testirati  
-⚠️ **Shopping deals cache** - optimiziran, treba testirati pod opterećenjem  
 ⚠️ **Back button handling** - popravljen, treba provjeriti crash scenarije  
 
 ### Poznati problemi

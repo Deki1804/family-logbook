@@ -20,7 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.familylogbook.app.data.smarthome.SmartHomeManager
+// SmartHomeManager import removed - no longer needed for Parent OS
 import com.familylogbook.app.domain.model.Category
 import com.familylogbook.app.domain.model.LogEntry
 import com.familylogbook.app.ui.viewmodel.HomeViewModel
@@ -35,6 +35,10 @@ fun CategoryDetailScreen(
 ) {
     val entries = statsViewModel.getEntriesByCategory(category)
     val categoryName = when (category) {
+        Category.MEDICINE -> "Lijekovi"
+        Category.SYMPTOM -> "Simptomi"
+        Category.VACCINATION -> "Cjepiva"
+        Category.DAY -> "Dnevne obaveze"
         Category.HEALTH -> "Zdravlje"
         Category.SLEEP -> "Spavanje"
         Category.MOOD -> "Raspoloženje"
@@ -55,7 +59,7 @@ fun CategoryDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("$categoryName - Zapisi") },
+                title = { Text("$categoryName - Zdravstveni zapisi") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Natrag")
@@ -72,7 +76,7 @@ fun CategoryDetailScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "Još nema zapisa za $categoryName",
+                    text = "Još nema zdravstvenih zapisa za $categoryName",
                     fontSize = 16.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
@@ -100,7 +104,7 @@ fun CategoryDetailScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
-                                text = "Ukupno: ${entries.size} zapisa",
+                                text = "Ukupno: ${entries.size} zdravstvenih zapisa",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -121,14 +125,11 @@ fun CategoryDetailScreen(
                     val entity = entry.entityId?.let { entityId ->
                         homeViewModel.getEntityById(entityId)
                     }
-                    val context = LocalContext.current
-                    val smartHomeManager = remember(context) { SmartHomeManager(context) }
                     LogEntryCard(
                         entry = entry,
                         person = person,
                         entity = entity,
-                        viewModel = homeViewModel,
-                        smartHomeManager = smartHomeManager
+                        viewModel = homeViewModel
                     )
                 }
             }

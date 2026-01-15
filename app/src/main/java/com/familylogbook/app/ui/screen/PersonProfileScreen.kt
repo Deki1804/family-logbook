@@ -28,7 +28,7 @@ import com.familylogbook.app.domain.model.Person
 import com.familylogbook.app.domain.model.PersonType
 import com.familylogbook.app.domain.model.LogEntry
 import com.familylogbook.app.domain.model.Mood
-import com.familylogbook.app.data.smarthome.SmartHomeManager
+// SmartHomeManager import removed - no longer needed for Parent OS
 import com.familylogbook.app.ui.component.AdviceCard
 import com.familylogbook.app.ui.component.StatItem
 import com.familylogbook.app.ui.viewmodel.HomeViewModel
@@ -276,13 +276,11 @@ fun PersonOverviewTab(
                 viewModel.getEntityById(entityId)
             }
             val context = LocalContext.current
-            val smartHomeManager = remember(context) { SmartHomeManager(context) }
             LogEntryCard(
                 entry = entry,
                 person = person,
                 entity = entity,
-                viewModel = viewModel,
-                smartHomeManager = smartHomeManager
+                viewModel = viewModel
             )
         }
     }
@@ -317,13 +315,11 @@ fun PersonHealthTab(
                 viewModel.getEntityById(entityId)
             }
             val context = LocalContext.current
-            val smartHomeManager = remember(context) { SmartHomeManager(context) }
             LogEntryCard(
                 entry = entry,
                 person = person,
                 entity = entity,
-                viewModel = viewModel,
-                smartHomeManager = smartHomeManager
+                viewModel = viewModel
             )
         }
         
@@ -373,13 +369,11 @@ fun PersonDevelopmentTab(
                 viewModel.getEntityById(entityId)
             }
             val context = LocalContext.current
-            val smartHomeManager = remember(context) { SmartHomeManager(context) }
             LogEntryCard(
                 entry = entry,
                 person = person,
                 entity = entity,
-                viewModel = viewModel,
-                smartHomeManager = smartHomeManager
+                viewModel = viewModel
             )
         }
         
@@ -629,13 +623,11 @@ fun PersonFeedingTab(
                 viewModel.getEntityById(entityId)
             }
             val context = LocalContext.current
-            val smartHomeManager = remember(context) { SmartHomeManager(context) }
             LogEntryCard(
                 entry = entry,
                 person = person,
                 entity = entity,
-                viewModel = viewModel,
-                smartHomeManager = smartHomeManager
+                viewModel = viewModel
             )
         }
         
@@ -685,13 +677,11 @@ fun PersonSleepTab(
                 viewModel.getEntityById(entityId)
             }
             val context = LocalContext.current
-            val smartHomeManager = remember(context) { SmartHomeManager(context) }
             LogEntryCard(
                 entry = entry,
                 person = person,
                 entity = entity,
-                viewModel = viewModel,
-                smartHomeManager = smartHomeManager
+                viewModel = viewModel
             )
         }
         
@@ -815,13 +805,11 @@ fun PersonMoodTab(
                 viewModel.getEntityById(entityId)
             }
             val context = LocalContext.current
-            val smartHomeManager = remember(context) { SmartHomeManager(context) }
             LogEntryCard(
                 entry = entry,
                 person = person,
                 entity = entity,
-                viewModel = viewModel,
-                smartHomeManager = smartHomeManager
+                viewModel = viewModel
             )
         }
         
@@ -871,13 +859,11 @@ fun PersonWorkTab(
                 viewModel.getEntityById(entityId)
             }
             val context = LocalContext.current
-            val smartHomeManager = remember(context) { SmartHomeManager(context) }
             LogEntryCard(
                 entry = entry,
                 person = person,
                 entity = entity,
-                viewModel = viewModel,
-                smartHomeManager = smartHomeManager
+                viewModel = viewModel
             )
         }
         
@@ -928,13 +914,11 @@ fun PersonNotesTab(
                 viewModel.getEntityById(entityId)
             }
             val context = LocalContext.current
-            val smartHomeManager = remember(context) { SmartHomeManager(context) }
             LogEntryCard(
                 entry = entry,
                 person = person,
                 entity = entity,
-                viewModel = viewModel,
-                smartHomeManager = smartHomeManager
+                viewModel = viewModel
             )
         }
         
@@ -987,13 +971,11 @@ fun PersonFoodTab(
                 viewModel.getEntityById(entityId)
             }
             val context = LocalContext.current
-            val smartHomeManager = remember(context) { SmartHomeManager(context) }
             LogEntryCard(
                 entry = entry,
                 person = person,
                 entity = entity,
-                viewModel = viewModel,
-                smartHomeManager = smartHomeManager
+                viewModel = viewModel
             )
         }
         

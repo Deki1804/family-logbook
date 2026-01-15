@@ -1,49 +1,55 @@
 package com.familylogbook.app.data.timer
 
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.Context
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.work.CoroutineWorker
+import androidx.work.WorkerParameters
 import com.familylogbook.app.domain.timer.TimerManager
 
 /**
- * Broadcast receiver for timer alarms.
- * Shows a notification when timer expires.
+ * Background worker for timers.
+ *
+ * Uses WorkManager instead of exact alarms to avoid requiring exact-alarm permissions.
+ * This is sufficient for minute-level timers and is Play-policy friendly.
  */
-class TimerAlarmReceiver : BroadcastReceiver() {
-    
-    override fun onReceive(context: Context, intent: Intent) {
-        val timerId = intent.getStringExtra("timer_id") ?: return
-        val description = intent.getStringExtra("description")
-        
-        // Remove timer from active timers list
+class TimerWorker(
+    context: Context,
+    params: WorkerParameters
+) : CoroutineWorker(context, params) {
+
+    override suspend fun doWork(): Result {
+        val timerId = inputData.getString(KEY_TIMER_ID) ?: return Result.success()
+        val description = inputData.getString(KEY_DESCRIPTION)
+
+        // Remove timer from in-memory list (if app process is alive)
         TimerManager.cancelTimer(timerId)
-        
-        // Show notification
-        showNotification(context, timerId, description)
+
+        showNotification(applicationContext, timerId, description)
+        return Result.success()
     }
-    
+
     private fun showNotification(context: Context, timerId: String, description: String?) {
-        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        
-        // Create notification channel for Android O and above
+        val notificationManager =
+            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 TIMER_CHANNEL_ID,
                 "Timer Alarms",
                 NotificationManager.IMPORTANCE_HIGH
-            )
-            channel.description = "Notifications for timer alarms"
-            channel.enableVibration(true)
-            channel.enableLights(true)
+            ).apply {
+                this.description = "Notifications for timer alarms"
+                enableVibration(true)
+                enableLights(true)
+            }
             notificationManager.createNotificationChannel(channel)
         }
-        
+
         val notificationText = description ?: "Timer je istekao!"
-        
+
         val notification = NotificationCompat.Builder(context, TIMER_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("⏰ Timer")
@@ -52,11 +58,15 @@ class TimerAlarmReceiver : BroadcastReceiver() {
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setAutoCancel(true)
             .build()
-        
+
         notificationManager.notify(timerId.hashCode(), notification)
     }
-    
+
     companion object {
         private const val TIMER_CHANNEL_ID = "timer_alarms"
+
+        const val KEY_TIMER_ID = "timer_id"
+        const val KEY_DESCRIPTION = "description"
     }
 }
+

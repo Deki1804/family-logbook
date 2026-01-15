@@ -42,8 +42,11 @@ class FirestoreLogbookRepository(
     private fun getCurrentUserId(): String {
         val currentUser = auth.currentUser
         if (currentUser == null) {
-            throw IllegalStateException("User not authenticated. Please sign in first.")
+            android.util.Log.e("FirestoreLogbookRepository", "User not authenticated! Attempting to sign in anonymously...")
+            // Try to sign in anonymously as fallback (should be done in AuthManager, but this is a safety net)
+            throw IllegalStateException("User not authenticated. Please sign in first. If you just opened the app, wait a moment for automatic sign-in.")
         }
+        android.util.Log.d("FirestoreLogbookRepository", "Current user ID: ${currentUser.uid}, anonymous: ${currentUser.isAnonymous}")
         return currentUser.uid
     }
     
@@ -129,8 +132,13 @@ class FirestoreLogbookRepository(
                             null
                         }
                     }
+                    android.util.Log.d("FirestoreLogbookRepository", "Loaded ${entries.size} entries from Firestore (snapshot had ${snapshot.documents.size} documents)")
+                    if (entries.isNotEmpty()) {
+                        android.util.Log.d("FirestoreLogbookRepository", "First entry: ${entries.first().id}, category: ${entries.first().category}, text: ${entries.first().rawText.take(50)}")
+                    }
                     trySend(entries)
                 } else {
+                    android.util.Log.w("FirestoreLogbookRepository", "Snapshot is null, sending empty list")
                     trySend(emptyList())
                 }
             }
@@ -157,10 +165,15 @@ class FirestoreLogbookRepository(
                 val currentUser = auth.currentUser
                 android.util.Log.d("FirestoreLogbookRepository", "Adding entry as user: $currentUserId (authenticated: ${currentUser?.isAnonymous})")
                 
-                getEntriesCollection()
+                val entriesRef = getEntriesCollection()
+                val entryMap = entry.toFirestoreMap()
+                android.util.Log.d("FirestoreLogbookRepository", "Saving entry to: ${entriesRef.path}/${entry.id}")
+                android.util.Log.d("FirestoreLogbookRepository", "Entry data: category=${entry.category}, personId=${entry.personId}, text=${entry.rawText.take(50)}")
+                entriesRef
                     .document(entry.id)
-                    .set(entry.toFirestoreMap())
+                    .set(entryMap)
                     .await()
+                android.util.Log.d("FirestoreLogbookRepository", "Entry saved successfully to Firestore: ${entry.id}")
             } catch (e: FirebaseFirestoreException) {
                 android.util.Log.e("FirestoreLogbookRepository", "Firestore error adding entry: ${e.code} - ${e.message}", e)
                 // Re-throw Firestore exceptions as-is for proper error handling
@@ -463,17 +476,22 @@ class FirestoreLogbookRepository(
                 hasAttachment = getBoolean("hasAttachment") ?: false,
                 aiAdvice = getString("aiAdvice"),
                 reminderDate = getLong("reminderDate"),
+                dayEntryType = getString("dayEntryType")?.let { com.familylogbook.app.domain.model.DayEntryType.valueOf(it) },
+                isCompleted = getBoolean("isCompleted"),
+                dueDate = getLong("dueDate"),
                 feedingType = getString("feedingType")?.let { FeedingType.valueOf(it) },
                 feedingAmount = (get("feedingAmount") as? Long)?.toInt(),
                 temperature = (get("temperature") as? Double)?.toFloat(),
+                symptoms = (get("symptoms") as? List<*>)?.mapNotNull { it as? String },
                 medicineGiven = getString("medicineGiven"),
+                medicineDosage = getString("medicineDosage"),
                 medicineTimestamp = getLong("medicineTimestamp"),
                 medicineIntervalHours = (get("medicineIntervalHours") as? Long)?.toInt(),
                 nextMedicineTime = getLong("nextMedicineTime"),
-                symptoms = (get("symptoms") as? List<*>)?.mapNotNull { it as? String },
                 shoppingItems = (get("shoppingItems") as? List<*>)?.mapNotNull { it as? String },
                 checkedShoppingItems = (get("checkedShoppingItems") as? List<*>)?.mapNotNull { it as? String }?.toSet(),
                 vaccinationName = getString("vaccinationName"),
+                vaccinationDate = getLong("vaccinationDate"),
                 nextVaccinationDate = getLong("nextVaccinationDate"),
                 nextVaccinationMessage = getString("nextVaccinationMessage"),
                 amount = (get("amount") as? Double),
@@ -500,17 +518,22 @@ class FirestoreLogbookRepository(
             "hasAttachment" to hasAttachment,
             "aiAdvice" to aiAdvice,
             "reminderDate" to reminderDate,
+            "dayEntryType" to dayEntryType?.name,
+            "isCompleted" to isCompleted,
+            "dueDate" to dueDate,
             "feedingType" to feedingType?.name,
             "feedingAmount" to feedingAmount?.toLong(),
             "temperature" to temperature?.toDouble(),
+            "symptoms" to symptoms,
             "medicineGiven" to medicineGiven,
+            "medicineDosage" to medicineDosage,
             "medicineTimestamp" to medicineTimestamp,
             "medicineIntervalHours" to medicineIntervalHours?.toLong(),
             "nextMedicineTime" to nextMedicineTime,
-            "symptoms" to symptoms,
             "shoppingItems" to shoppingItems,
             "checkedShoppingItems" to (checkedShoppingItems?.toList() ?: emptyList()),
             "vaccinationName" to vaccinationName,
+            "vaccinationDate" to vaccinationDate,
             "nextVaccinationDate" to nextVaccinationDate,
             "nextVaccinationMessage" to nextVaccinationMessage,
             "amount" to amount,

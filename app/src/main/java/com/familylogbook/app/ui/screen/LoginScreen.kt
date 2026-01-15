@@ -193,7 +193,15 @@ fun LoginScreen(
                     successMessage = null
                     
                     try {
-                        val account = googleSignInHelper.handleSignInResult(result.data)
+                        val account = try {
+                            googleSignInHelper.handleSignInResult(result.data)
+                        } catch (e: Exception) {
+                            // Handle Google Sign-In errors (user cancelled, network error, etc.)
+                            errorMessage = e.message ?: "Google prijava nije uspjela. Pokušaj ponovo."
+                            android.util.Log.e("LoginScreen", "Google Sign-In failed", e)
+                            isLoading = false
+                            return@launch
+                        }
                         
                         if (account != null) {
                             val credential = googleSignInHelper.getFirebaseCredential(account)
@@ -244,6 +252,7 @@ fun LoginScreen(
                                 android.util.Log.e("LoginScreen", "Google Sign-In error", e)
                             }
                         } else {
+                            // This should not happen if handleSignInResult throws exception on error
                             errorMessage = "Google prijava nije uspjela. Pokušaj ponovo."
                         }
                     } catch (e: Exception) {

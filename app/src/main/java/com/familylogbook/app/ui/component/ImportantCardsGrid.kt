@@ -20,78 +20,66 @@ import com.familylogbook.app.domain.model.Entity
 
 /**
  * Grid of important cards (2x2 layout).
- * Shows: Child, Shopping, Advice, Smart Home
+ * Parent OS: 4 core shortcuts (Djeca, Zdravlje, Dnevne obaveze, Savjeti).
  */
 @Composable
 fun ImportantCardsGrid(
     persons: List<Person>,
-    entities: List<Entity>,
     entries: List<LogEntry>,
     onChildClick: () -> Unit = {},
-    onEntityClick: (String) -> Unit = {}, // entityId
-    onShoppingClick: () -> Unit = {},
+    onHealthClick: () -> Unit = {},
+    onDayClick: () -> Unit = {},
     onAdviceClick: () -> Unit = {},
-    onSmartHomeClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     // Calculate stats
     val children = persons.filter { it.type == com.familylogbook.app.domain.model.PersonType.CHILD }
-    val shoppingEntries = entries.filter { it.category == Category.SHOPPING }
-    val uncheckedShoppingItems = shoppingEntries
-        .flatMap { it.shoppingItems ?: emptyList() }
-        .filter { item -> 
-            shoppingEntries.none { entry -> 
-                entry.checkedShoppingItems?.contains(item) == true 
-            }
-        }
-        .distinct()
     
-    val adviceCount = entries.count { 
-        it.category != Category.OTHER && 
-        it.category != Category.SHOPPING 
+    // Parent OS categories
+    val healthEntries = entries.filter { 
+        it.category == Category.HEALTH || 
+        it.category == Category.MEDICINE || 
+        it.category == Category.SYMPTOM || 
+        it.category == Category.VACCINATION 
     }
+    val dayEntries = entries.filter { it.category == Category.DAY }
+    
+    val adviceCount = entries.count { it.category != Category.OTHER }
     
     // Build list of cards to show (only relevant ones)
     val cardsToShow = mutableListOf<CardInfo>()
     
-    // Child card - only if user has children
-    if (children.isNotEmpty()) {
-        cardsToShow.add(CardInfo(
+    // Child card (always present; if no children, acts as a clear call-to-action)
+    cardsToShow.add(
+        CardInfo(
             title = "👶 Djeca",
-            subtitle = "${children.size} ${if (children.size == 1) "dijete" else "djece"}",
-            badge = null,
+            subtitle = if (children.isEmpty()) {
+                "Dodaj dijete"
+            } else {
+                "${children.size} ${if (children.size == 1) "dijete" else "djece"}"
+            },
+            badge = if (children.isNotEmpty()) "${children.size}" else null,
             onClick = onChildClick,
             iconColor = Color(0xFF4ECDC4)
-        ))
-    }
+        )
+    )
     
-    // Entity cards - only if user has entities
-    entities.forEach { entity ->
-        val entityIcon = when (entity.type) {
-            com.familylogbook.app.domain.model.EntityType.HOUSE -> "🏡"
-            com.familylogbook.app.domain.model.EntityType.CAR -> "🚗"
-            com.familylogbook.app.domain.model.EntityType.FINANCE -> "💰"
-            com.familylogbook.app.domain.model.EntityType.SCHOOL -> "🏫"
-            com.familylogbook.app.domain.model.EntityType.WORK -> "💼"
-            com.familylogbook.app.domain.model.EntityType.SHOPPING -> "🛒"
-            else -> entity.emoji.ifEmpty { "📦" }
-        }
-        cardsToShow.add(CardInfo(
-            title = "$entityIcon ${entity.name}",
-            subtitle = "Detalji",
-            badge = null,
-            onClick = { onEntityClick(entity.id) },
-            iconColor = Color(0xFFAA96DA)
-        ))
-    }
-    
-    // Shopping card - always show
+    // Health card - Parent OS core feature
     cardsToShow.add(CardInfo(
-        title = "🛒 Shopping",
-        subtitle = if (uncheckedShoppingItems.isEmpty()) "Lista prazna" else "${uncheckedShoppingItems.size} stavki",
-        badge = if (uncheckedShoppingItems.isNotEmpty()) "${uncheckedShoppingItems.size}" else null,
-        onClick = onShoppingClick,
+        title = "🏥 Zdravlje",
+        subtitle = if (healthEntries.isEmpty()) "Nema zdravstvenih zapisa" else "${healthEntries.size} zdravstvenih zapisa",
+        badge = if (healthEntries.isNotEmpty()) "${healthEntries.size}" else null,
+        onClick = onHealthClick,
         iconColor = Color(0xFFFF6B6B)
+    ))
+    
+    // Day routines card - Parent OS core feature
+    cardsToShow.add(CardInfo(
+        title = "📋 Dnevne obaveze",
+        subtitle = if (dayEntries.isEmpty()) "Nema rutina" else "${dayEntries.size} rutina",
+        badge = if (dayEntries.isNotEmpty()) "${dayEntries.size}" else null,
+        onClick = onDayClick,
+        iconColor = Color(0xFF6C5CE7)
     ))
     
     // Advice card - always show
@@ -103,16 +91,7 @@ fun ImportantCardsGrid(
         iconColor = Color(0xFFFFD93D)
     ))
     
-    // Smart Home card - always show
-    cardsToShow.add(CardInfo(
-        title = "🏠 Smart Home",
-        subtitle = "Upravljanje",
-        badge = null,
-        onClick = onSmartHomeClick,
-        iconColor = Color(0xFF95E1D3)
-    ))
-    
-    // Display cards in 2x2 grid (or adjust based on number of cards)
+    // Display cards in 2x2 grid
     val cardsInRow1 = cardsToShow.take(2)
     val cardsInRow2 = cardsToShow.drop(2).take(2)
     

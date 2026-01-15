@@ -6,7 +6,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
@@ -16,15 +15,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.familylogbook.app.R
-import com.familylogbook.app.data.auth.AuthManager
-import kotlinx.coroutines.delay
 
 @Composable
-fun SplashScreen(
-    authManager: AuthManager,
-    onAuthReady: (String) -> Unit,
-    onError: () -> Unit
-) {
+fun SplashScreen() {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -80,23 +73,8 @@ fun SplashScreen(
         }
     }
     
-    LaunchedEffect(Unit) {
-        try {
-            // Small delay for splash screen visibility
-            delay(500)
-            
-            // Ensure user is signed in (async, no blocking)
-            val userId = authManager.ensureSignedIn()
-            
-            // Small delay to show completion
-            delay(300)
-            
-            onAuthReady(userId)
-        } catch (e: Exception) {
-            android.util.Log.e("SplashScreen", "Auth initialization failed: ${e.message}", e)
-            onError()
-        }
-    }
+    // Note: Auth initialization is now handled by SplashScreenWrapper
+    // This screen is just a visual placeholder while repository initializes
 }
 
 

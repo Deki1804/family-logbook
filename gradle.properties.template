@@ -14,18 +14,5 @@ kotlin.code.style=official
 org.gradle.java.installations.auto-detect=true
 org.gradle.java.installations.auto-download=true
 
-# Google Gemini API Key (opcionalno - za shopping deals checker)
-# Dobijte API key na: https://aistudio.google.com/app
-# Uncomment i postavite svoj API key:
-# GEMINI_API_KEY=your_api_key_here
-
-# Google Custom Search API (za shopping deals)
-# 1. Kreiraj Custom Search Engine na: https://programmablesearchengine.google.com/
-# 2. Konfiguriraj da pretražuje samo: kaufland.hr, konzum.hr, spar.hr, lidl.hr, plodine.hr
-# 3. Dobij API key iz Google Cloud Console (enable Custom Search API)
-# 4. Dobij Engine ID iz Custom Search Engine settings
-# ⚠️ VAŽNO: Prije production-a, RESTRICT API key u Google Cloud Console!
-#    - API restrictions: Restrict key → Custom Search API
-#    - Application restrictions: Android apps → package name + SHA-1 fingerprint
-GOOGLE_CSE_API_KEY=your_api_key_here
-GOOGLE_CSE_ENGINE_ID=your_engine_id_here
+# (Parent OS) Nema vanjskih AI/shopping API ključeva u projektu.
+# Ako ikad ponovno uvedeš takve feature-e, ključeve drži isključivo lokalno/CI secrets.

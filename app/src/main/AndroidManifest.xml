@@ -5,7 +5,6 @@
     <!-- Permissions for notifications -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     
     <!-- Permission for speech recognition -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -38,12 +37,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        
-        <!-- Timer Alarm Receiver -->
-        <receiver
-            android:name=".data.timer.TimerAlarmReceiver"
-            android:exported="false"
-            android:enabled="true" />
     </application>
 
 </manifest>

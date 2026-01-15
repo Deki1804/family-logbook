@@ -25,7 +25,7 @@ import com.familylogbook.app.domain.model.Category
 import com.familylogbook.app.domain.model.Entity
 import com.familylogbook.app.domain.model.EntityType
 import com.familylogbook.app.domain.model.LogEntry
-import com.familylogbook.app.data.smarthome.SmartHomeManager
+// SmartHomeManager import removed - no longer needed for Parent OS
 import com.familylogbook.app.ui.component.StatItem
 import com.familylogbook.app.ui.viewmodel.HomeViewModel
 import kotlinx.coroutines.launch
@@ -214,13 +214,11 @@ fun EntityOverviewTab(
                     persons.find { it.id == personId }
                 }
                 val context = androidx.compose.ui.platform.LocalContext.current
-                val smartHomeManager = remember(context) { SmartHomeManager(context) }
                 LogEntryCard(
                     entry = entry,
                     person = person,
                     entity = entity,
-                    viewModel = viewModel,
-                    smartHomeManager = smartHomeManager
+                    viewModel = viewModel
                 )
             }
         }
@@ -769,13 +767,11 @@ fun EntityHistoryTab(
                     persons.find { it.id == personId }
                 }
                 val context = androidx.compose.ui.platform.LocalContext.current
-                val smartHomeManager = remember(context) { SmartHomeManager(context) }
                 LogEntryCard(
                     entry = entry,
                     person = person,
                     entity = entity,
-                    viewModel = viewModel,
-                    smartHomeManager = smartHomeManager
+                    viewModel = viewModel
                 )
             }
         }

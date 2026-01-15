@@ -215,9 +215,11 @@ class AddEntryViewModel(
     }
     
     fun setSelectedPerson(personId: String?) {
+        android.util.Log.d("AddEntryViewModel", "setSelectedPerson called with: $personId")
         _selectedPersonId.value = personId
         _selectedChildId.value = null
         _selectedEntityId.value = null
+        android.util.Log.d("AddEntryViewModel", "After setSelectedPerson - _selectedPersonId.value = ${_selectedPersonId.value}")
     }
     
     fun setSelectedEntity(entityId: String?) {
@@ -370,13 +372,19 @@ class AddEntryViewModel(
             }
             
             // Check if this is a vaccination entry but vaccination name is not detected
-            val isVaccinationEntry = classification.category == Category.HEALTH && 
-                (text.lowercase().contains("cjepivo") || 
-                 text.lowercase().contains("cjepiv") ||
-                 text.lowercase().contains("vakcina") ||
-                 text.lowercase().contains("vaccination") ||
-                 text.lowercase().contains("primio") ||
-                 text.lowercase().contains("primila"))
+            // IMPORTANT: classifier often returns Category.VACCINATION directly, so handle both HEALTH and VACCINATION.
+            val lowerText = text.lowercase()
+            val looksLikeVaccinationByKeywords =
+                lowerText.contains("cjepivo") ||
+                    lowerText.contains("cjepiv") ||
+                    lowerText.contains("vakcina") ||
+                    lowerText.contains("vaccination") ||
+                    lowerText.contains("primio") ||
+                    lowerText.contains("primila")
+
+            val isVaccinationEntry =
+                classification.category == Category.VACCINATION ||
+                    (classification.category == Category.HEALTH && looksLikeVaccinationByKeywords)
             
             // If vaccination entry but no vaccination name detected, try to show dialog
             if (isVaccinationEntry && classification.vaccinationName == null) {
@@ -507,14 +515,21 @@ class AddEntryViewModel(
                 amount = existingEntry?.amount, // Preserve amount if editing
                 currency = existingEntry?.currency, // Preserve currency if editing
                 vaccinationName = classification.vaccinationName ?: existingEntry?.vaccinationName,
+                vaccinationDate = if (classification.vaccinationName != null) {
+                    existingEntry?.vaccinationDate ?: now
+                } else {
+                    existingEntry?.vaccinationDate
+                },
                 nextVaccinationDate = nextVaccinationDate ?: existingEntry?.nextVaccinationDate,
                 nextVaccinationMessage = nextVaccinationMessage ?: existingEntry?.nextVaccinationMessage
             )
             
             if (editingId != null) {
                 repository.updateEntry(entry)
+                android.util.Log.d("AddEntryViewModel", "Entry updated successfully: ${entry.id}, category: ${entry.category}, personId: ${entry.personId}, text: ${entry.rawText.take(50)}")
             } else {
                 repository.addEntry(entry)
+                android.util.Log.d("AddEntryViewModel", "Entry added successfully: ${entry.id}, category: ${entry.category}, personId: ${entry.personId}, text: ${entry.rawText.take(50)}")
             }
             
             // Reset form
@@ -524,10 +539,63 @@ class AddEntryViewModel(
             _selectedEntityId.value = null
             _selectedSymptoms.value = emptySet()
             _editingEntryId.value = null
+            _errorMessage.value = null // Clear any previous errors
             
             true
         } catch (e: Exception) {
             android.util.Log.e("AddEntryViewModel", "Error saving entry: ${e.message}", e)
+            _errorMessage.value = com.familylogbook.app.ui.util.ErrorHandler.getFriendlyErrorMessage(e)
+            false
+        } finally {
+            _isLoading.value = false
+        }
+    }
+    
+    /**
+     * Saves a medicine entry directly (Parent OS core feature).
+     * This bypasses text classification and creates a medicine entry directly.
+     */
+    suspend fun saveMedicineEntry(
+        medicineName: String,
+        dosage: String,
+        intervalHours: Int,
+        notes: String? = null
+    ): Boolean {
+        val selectedPersonId = _selectedPersonId.value ?: _selectedChildId.value
+        if (selectedPersonId == null) {
+            _errorMessage.value = "Molimo odaberi osobu za lijek."
+            return false
+        }
+        
+        if (medicineName.isEmpty()) {
+            _errorMessage.value = "Molimo unesi naziv lijeka."
+            return false
+        }
+        
+        _isLoading.value = true
+        _errorMessage.value = null
+        
+        return try {
+            val medicineEntry = com.familylogbook.app.domain.model.MedicineEntry.create(
+                personId = selectedPersonId,
+                medicineName = medicineName,
+                dosage = dosage.ifEmpty { "1 doza" },
+                givenAt = System.currentTimeMillis(),
+                intervalHours = intervalHours,
+                notes = notes
+            )
+            
+            repository.addEntry(medicineEntry)
+            android.util.Log.d("AddEntryViewModel", "Medicine entry added successfully: ${medicineEntry.id}")
+            
+            // Reset form
+            _entryText.value = ""
+            _selectedSymptoms.value = emptySet()
+            _errorMessage.value = null // Clear any previous errors
+            
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("AddEntryViewModel", "Error saving medicine entry: ${e.message}", e)
             _errorMessage.value = com.familylogbook.app.ui.util.ErrorHandler.getFriendlyErrorMessage(e)
             false
         } finally {
@@ -579,6 +647,7 @@ class AddEntryViewModel(
             )
             
             repository.addEntry(entry)
+            android.util.Log.d("AddEntryViewModel", "Feeding entry added successfully: ${entry.id}")
             
             // Reset feeding state
             stopFeeding()
@@ -588,10 +657,61 @@ class AddEntryViewModel(
             _feedingElapsedSeconds.value = 0L
             _selectedChildId.value = null
             _selectedPersonId.value = null
+            _errorMessage.value = null // Clear any previous errors
             
             true
         } catch (e: Exception) {
             android.util.Log.e("AddEntryViewModel", "Error saving feeding entry: ${e.message}", e)
+            _errorMessage.value = com.familylogbook.app.ui.util.ErrorHandler.getFriendlyErrorMessage(e)
+            false
+        } finally {
+            _isLoading.value = false
+        }
+    }
+    
+    /**
+     * Saves a symptom entry directly (Parent OS core feature).
+     * This bypasses text classification and creates a symptom entry directly.
+     */
+    suspend fun saveSymptomEntry(
+        temperature: Float? = null,
+        symptoms: List<String> = emptyList(),
+        notes: String? = null
+    ): Boolean {
+        val selectedPersonId = _selectedPersonId.value ?: _selectedChildId.value
+        if (selectedPersonId == null) {
+            _errorMessage.value = "Molimo odaberi osobu za simptom."
+            return false
+        }
+        
+        if (temperature == null && symptoms.isEmpty()) {
+            _errorMessage.value = "Molimo unesi temperaturu ili simptome."
+            return false
+        }
+        
+        _isLoading.value = true
+        _errorMessage.value = null
+        
+        return try {
+            val symptomEntry = com.familylogbook.app.domain.model.SymptomEntry.create(
+                personId = selectedPersonId,
+                temperature = temperature,
+                symptoms = symptoms,
+                timestamp = System.currentTimeMillis(),
+                notes = notes
+            )
+            
+            repository.addEntry(symptomEntry)
+            android.util.Log.d("AddEntryViewModel", "Symptom entry added successfully: ${symptomEntry.id}")
+            
+            // Reset form
+            _entryText.value = ""
+            _selectedSymptoms.value = emptySet()
+            _errorMessage.value = null // Clear any previous errors
+            
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("AddEntryViewModel", "Error saving symptom entry: ${e.message}", e)
             _errorMessage.value = com.familylogbook.app.ui.util.ErrorHandler.getFriendlyErrorMessage(e)
             false
         } finally {

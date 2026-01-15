@@ -10,6 +10,7 @@ import com.familylogbook.app.domain.model.Person
 import com.familylogbook.app.domain.model.Entity
 import com.familylogbook.app.domain.model.LogEntry
 import com.familylogbook.app.domain.repository.LogbookRepository
+import com.familylogbook.app.domain.model.DayEntryType
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -52,16 +53,15 @@ class HomeViewModel(
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
     
+    // Loading state
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+    
     // Filtered entries
     private val _filteredEntries = MutableStateFlow<List<LogEntry>>(emptyList())
     val filteredEntries: StateFlow<List<LogEntry>> = _filteredEntries.asStateFlow()
     
-    // Shopping deals cache - stores advice for each entry ID
-    private val _shoppingDealsByEntryId = MutableStateFlow<Map<String, AdviceTemplate>>(emptyMap())
-    val shoppingDealsByEntryId: StateFlow<Map<String, AdviceTemplate>> = _shoppingDealsByEntryId.asStateFlow()
-    
-    // Track which entries have already been loaded (to avoid duplicate requests)
-    private val _shoppingDealsLoaded = mutableSetOf<String>()
+    // Shopping deals removed - no longer needed for Parent OS
     
     init {
         loadEntries()
@@ -93,62 +93,47 @@ class HomeViewModel(
     
     private fun loadEntries() {
         viewModelScope.launch {
-            repository.getAllEntries().collect { entriesList ->
-                val sortedEntries = entriesList.sortedByDescending { it.timestamp }
-                _entries.value = sortedEntries
-                
-                // Load shopping deals for new shopping entries (only once per entry)
-                // Only process entries that haven't been loaded yet
-                val newShoppingEntries = sortedEntries
-                    .filter { it.category == Category.SHOPPING }
-                    .filter { it.id !in _shoppingDealsLoaded }
-                
-                // Load deals for new entries (limit to max 3 at a time to avoid too many concurrent requests)
-                newShoppingEntries.take(3).forEach { entry ->
-                    loadShoppingDealsForEntry(entry)
-                }
-            }
-        }
-    }
-    
-    /**
-     * Loads shopping deals for a specific entry (only once).
-     * Results are cached in _shoppingDealsByEntryId.
-     */
-    private fun loadShoppingDealsForEntry(entry: LogEntry) {
-        if (entry.id in _shoppingDealsLoaded) {
-            return // Already loaded
-        }
-        
-        // Mark as loading immediately to prevent duplicate calls
-        _shoppingDealsLoaded.add(entry.id)
-        
-        viewModelScope.launch {
+            _isLoading.value = true
             try {
-                val advice = adviceEngine.findShoppingDealsAdvice(entry.rawText)
-                if (advice != null) {
-                    _shoppingDealsByEntryId.value = _shoppingDealsByEntryId.value + (entry.id to advice)
+                repository.getAllEntries().collect { entriesList ->
+                    val sortedEntries = entriesList.sortedByDescending { it.timestamp }
+                    android.util.Log.d("HomeViewModel", "Received ${entriesList.size} entries, sorted to ${sortedEntries.size}")
+                    if (sortedEntries.isNotEmpty()) {
+                        android.util.Log.d("HomeViewModel", "Latest entry: ${sortedEntries.first().id}, category: ${sortedEntries.first().category}, text: ${sortedEntries.first().rawText.take(50)}")
+                    }
+                    _entries.value = sortedEntries
+                    _isLoading.value = false
+                    
+                    // Shopping deals removed - no longer needed for Parent OS
                 }
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                // Job was cancelled - this is OK, don't log as error
-                android.util.Log.d("HomeViewModel", "Shopping deals loading cancelled for entry ${entry.id}")
-                // Remove from loaded set so we can retry later
-                _shoppingDealsLoaded.remove(entry.id)
             } catch (e: Exception) {
-                android.util.Log.e("HomeViewModel", "Error loading shopping deals for entry ${entry.id}: ${e.message}")
-                // Remove from loaded set so we can retry later if needed
-                _shoppingDealsLoaded.remove(entry.id)
+                android.util.Log.e("HomeViewModel", "Error loading entries: ${e.message}", e)
+                _isLoading.value = false
             }
         }
     }
     
     /**
-     * Gets cached shopping deals advice for an entry.
-     * Returns null if not found or not loaded yet.
+     * Refresh all data (entries, persons, entities, children).
+     * Used for pull-to-refresh functionality.
      */
-    fun getCachedShoppingDealsAdvice(entryId: String): AdviceTemplate? {
-        return _shoppingDealsByEntryId.value[entryId]
+    fun refreshAll() {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                loadEntries()
+                loadPersons()
+                loadEntities()
+                loadChildren()
+                _isLoading.value = false
+            } catch (e: Exception) {
+                android.util.Log.e("HomeViewModel", "Error refreshing data: ${e.message}", e)
+                _isLoading.value = false
+            }
+        }
     }
+    
+    // Shopping deals methods removed - no longer needed for Parent OS
     
     // Store current advice for detail screen
     private val _currentAdvice = MutableStateFlow<AdviceTemplate?>(null)
@@ -189,14 +174,7 @@ class HomeViewModel(
         saveDismissedAdviceIds(newSet)
     }
     
-    /**
-     * Manually refresh shopping deals for an entry (forces reload).
-     */
-    fun refreshShoppingDealsForEntry(entry: LogEntry) {
-        _shoppingDealsLoaded.remove(entry.id)
-        _shoppingDealsByEntryId.value = _shoppingDealsByEntryId.value - entry.id
-        loadShoppingDealsForEntry(entry)
-    }
+    // Shopping deals refresh method removed - no longer needed for Parent OS
     
     private fun loadChildren() {
         viewModelScope.launch {
@@ -251,22 +229,22 @@ class HomeViewModel(
         loadEntries()
     }
     
+    /**
+     * Refreshes all data from repository.
+     * Call this after account linking to reload data with new user ID.
+     */
+    fun refreshAllData() {
+        loadEntries()
+        loadChildren()
+        loadPersons()
+        loadEntities()
+    }
+    
     fun getAdviceForEntry(entry: LogEntry): AdviceTemplate? {
         return adviceEngine.findAdvice(entry.rawText, entry.category)
     }
     
-    /**
-     * Gets shopping deals advice for a shopping entry.
-     * DEPRECATED: Use getCachedShoppingDealsAdvice() instead.
-     * This method is kept for backward compatibility but should not be used in Compose.
-     */
-    @Deprecated("Use getCachedShoppingDealsAdvice() instead to avoid duplicate API calls")
-    suspend fun getShoppingDealsAdvice(entry: LogEntry): AdviceTemplate? {
-        if (entry.category != Category.SHOPPING) {
-            return null
-        }
-        return adviceEngine.findShoppingDealsAdvice(entry.rawText)
-    }
+    // Shopping deals advice method removed - no longer needed for Parent OS
     
     fun getPersonById(personId: String): Person? {
         return _persons.value.find { it.id == personId }
@@ -286,21 +264,21 @@ class HomeViewModel(
         }
     }
     
-    suspend fun updateShoppingItemChecked(entryId: String, item: String, isChecked: Boolean) {
-        val entry = repository.getEntryById(entryId) ?: return
-        
-        val currentChecked = entry.checkedShoppingItems ?: emptySet()
-        val updatedChecked = if (isChecked) {
-            currentChecked + item
-        } else {
-            currentChecked - item
+    /**
+     * Toggles completion state for DAY checklist items.
+     * Persists via repository.updateEntry so UI updates automatically via Firestore snapshot.
+     */
+    fun toggleChecklistCompleted(entryId: String) {
+        viewModelScope.launch {
+            val entry = repository.getEntryById(entryId) ?: return@launch
+            if (!com.familylogbook.app.domain.model.DayEntry.isChecklistItem(entry)) return@launch
+
+            val updated = entry.copy(
+                isCompleted = !(entry.isCompleted ?: false),
+                dayEntryType = entry.dayEntryType ?: DayEntryType.CHECKLIST
+            )
+            repository.updateEntry(updated)
         }
-        
-        val updatedEntry = entry.copy(
-            checkedShoppingItems = updatedChecked
-        )
-        
-        repository.updateEntry(updatedEntry)
     }
 }
 

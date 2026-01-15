@@ -17,7 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.familylogbook.app.data.smarthome.SmartHomeManager
+// SmartHomeManager import removed - no longer needed for Parent OS
 import com.familylogbook.app.domain.model.Child
 import com.familylogbook.app.domain.model.LogEntry
 import com.familylogbook.app.domain.model.Person
@@ -96,8 +96,6 @@ fun ChildProfileScreen(
                 val entity = entry.entityId?.let { entityId ->
                     viewModel.getEntityById(entityId)
                 }
-                val context = LocalContext.current
-                val smartHomeManager = remember(context) { SmartHomeManager(context) }
                 Column(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -105,8 +103,7 @@ fun ChildProfileScreen(
                         entry = entry,
                         person = person,
                         entity = entity,
-                        viewModel = viewModel,
-                        smartHomeManager = smartHomeManager
+                        viewModel = viewModel
                     )
                 }
             }

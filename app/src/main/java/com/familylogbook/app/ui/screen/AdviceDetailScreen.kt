@@ -24,12 +24,22 @@ fun AdviceDetailScreen(
     advice: AdviceTemplate,
     onNavigateBack: () -> Unit
 ) {
+    // Safe navigation - ensure onNavigateBack is always callable
+    val safeNavigateBack: () -> Unit = {
+        try {
+            onNavigateBack()
+        } catch (e: Exception) {
+            android.util.Log.e("AdviceDetailScreen", "Error navigating back: ${e.message}", e)
+            // Fallback: do nothing or show error
+        }
+    }
+    
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("💡 Savjet") },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(onClick = safeNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Natrag")
                     }
                 }

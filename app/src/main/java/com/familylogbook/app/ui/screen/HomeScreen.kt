@@ -11,6 +11,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.material.icons.Icons
@@ -47,7 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.familylogbook.app.data.smarthome.SmartHomeManager
+// SmartHomeManager import removed - no longer needed for Parent OS
 import com.familylogbook.app.data.speech.SpeechRecognizerHelper
 import android.Manifest
 import android.content.Intent
@@ -56,6 +58,7 @@ import android.net.Uri
 import androidx.core.content.ContextCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.Settings
 import com.familylogbook.app.domain.model.Category
 import com.familylogbook.app.domain.model.Child
 import com.familylogbook.app.domain.model.LogEntry
@@ -67,6 +70,9 @@ import com.familylogbook.app.ui.component.TodayOverviewCard
 import com.familylogbook.app.ui.component.ImportantCardsGrid
 import com.familylogbook.app.ui.component.RecentEntriesList
 import com.familylogbook.app.ui.component.AdvicePill
+import com.familylogbook.app.ui.component.MedicineTrackerCard
+import com.familylogbook.app.ui.component.SymptomTrackerCard
+import com.familylogbook.app.ui.component.VaccinationCalendarCard
 import com.familylogbook.app.ui.navigation.Screen
 import com.familylogbook.app.ui.viewmodel.HomeViewModel
 import com.familylogbook.app.domain.timer.TimerManager
@@ -82,15 +88,24 @@ enum class DayGroup(val label: String) {
 
 fun getCategoryDisplayName(category: Category): String {
     return when (category) {
+        // Parent OS Core Categories
+        Category.MEDICINE -> "Lijekovi"
+        Category.SYMPTOM -> "Simptomi"
+        Category.VACCINATION -> "Cjepiva"
+        Category.DAY -> "Dnevne obaveze"
+        
+        // Parent OS Health & Wellness
         Category.HEALTH -> "Zdravlje"
+        Category.FEEDING -> "Hranjenje"
         Category.SLEEP -> "Spavanje"
         Category.MOOD -> "Raspoloženje"
         Category.DEVELOPMENT -> "Razvoj"
-        Category.KINDERGARTEN_SCHOOL -> "Škola"
         Category.SCHOOL -> "Škola"
+        
+        // Legacy categories (kept for backward compatibility, will be removed from UI)
+        Category.KINDERGARTEN_SCHOOL -> "Škola"
         Category.HOME -> "Dom"
         Category.HOUSE -> "Kuća"
-        Category.FEEDING -> "Hranjenje"
         Category.AUTO -> "Auto"
         Category.FINANCE -> "Financije"
         Category.WORK -> "Posao"
@@ -138,6 +153,7 @@ data class EntryGroup(
     val entries: List<LogEntry>
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
@@ -149,11 +165,12 @@ fun HomeScreen(
     @Suppress("UNUSED_PARAMETER") onNavigateToEntityProfile: (String) -> Unit = {},
     onNavigateToCategoryDetail: (Category) -> Unit = {},
     onNavigateToAdvice: () -> Unit = {},
-    onNavigateToAdviceDetail: (com.familylogbook.app.domain.model.AdviceTemplate) -> Unit = {}
+    onNavigateToAdviceDetail: (com.familylogbook.app.domain.model.AdviceTemplate) -> Unit = {},
+    onNavigateToSettings: () -> Unit = {}
 ) {
     val persons by viewModel.persons.collectAsState()
     val entities by viewModel.entities.collectAsState()
-    val shoppingDealsCache by viewModel.shoppingDealsByEntryId.collectAsState()
+    // Shopping deals cache removed - no longer needed for Parent OS
     
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -178,10 +195,8 @@ fun HomeScreen(
                 onResult = { text ->
                     isListening = false
                     if (text != null && text.isNotBlank()) {
-                        // Automatically format as shopping list if shopping keywords are detected
-                        val formattedText = com.familylogbook.app.domain.classifier.ShoppingListFormatter.processVoiceInput(text)
-                        // Navigate to add entry with recognized text
-                        onNavigateToAddEntryWithText(formattedText)
+                        // Parent OS: keep voice input as-is (no shopping list formatting)
+                        onNavigateToAddEntryWithText(text)
                     }
                 },
                 onError = { error ->
@@ -198,7 +213,7 @@ fun HomeScreen(
     val selectedPersonId by viewModel.selectedPersonId.collectAsState()
     val selectedEntityId by viewModel.selectedEntityId.collectAsState()
     
-    val smartHomeManager = remember(context) { SmartHomeManager(context) }
+    // SmartHomeManager removed - no longer needed for Parent OS
     var showFilterSheet by remember { mutableStateOf(false) }
     
     // LazyListState for scroll control
@@ -224,33 +239,132 @@ fun HomeScreen(
     
     // Get all entries (not filtered) for overview
     val allEntries by viewModel.entries.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    
+    // Pull-to-refresh state
+    val pullToRefreshState = rememberPullToRefreshState()
     
     // Active timers
     val activeTimers by TimerManager.activeTimers.collectAsState()
     
-    Box(modifier = Modifier.fillMaxSize()) {
-        if (allEntries.isEmpty()) {
-            EmptyState(
-                modifier = Modifier.align(Alignment.Center),
-                onAddEntry = onNavigateToAddEntry
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Zdravlje") },
+                actions = {
+                    IconButton(onClick = onNavigateToSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = "Postavke")
+                    }
+                }
             )
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    start = 16.dp,
-                    end = 16.dp,
-                    top = 16.dp,
-                    bottom = 100.dp // Extra padding for FAB buttons at bottom
-                ),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+        },
+        floatingActionButton = {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // Voice input button
+                FloatingActionButton(
+                    onClick = {
+                        val helper = speechHelper
+                        if (showSpeechError != null) {
+                            showSpeechError = null
+                            isListening = false
+                            helper?.stopListening()
+                            return@FloatingActionButton
+                        }
+                        
+                        if (helper != null && !isListening) {
+                            if (helper.hasPermission()) {
+                                isListening = true
+                                helper.startListening(
+                                    onResult = { text ->
+                                        isListening = false
+                                        if (text != null && text.isNotBlank()) {
+                                            val formattedText = com.familylogbook.app.domain.classifier.ShoppingListFormatter.processVoiceInput(text)
+                                            onNavigateToAddEntryWithText(formattedText)
+                                        }
+                                    },
+                                    onError = { error ->
+                                        isListening = false
+                                        showSpeechError = error
+                                    }
+                                )
+                            } else {
+                                requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            }
+                        } else if (isListening) {
+                            helper?.stopListening()
+                            isListening = false
+                        }
+                    },
+                    containerColor = if (isListening) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.size(56.dp)
+                ) {
+                    Icon(
+                        if (isListening) Icons.Default.Stop else Icons.Default.RecordVoiceOver,
+                        contentDescription = if (isListening) "Zaustavi snimanje" else "Glasovni unos"
+                    )
+                }
+                
+                // Add entry button
+                FloatingActionButton(
+                    onClick = onNavigateToAddEntry,
+                    modifier = Modifier.size(56.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Zabilježi zdravstveni događaj"
+                    )
+                }
+            }
+        }
+    ) { paddingValues ->
+        Box(modifier = Modifier
+            .fillMaxSize()
+            .padding(paddingValues)) {
+            if (allEntries.isEmpty() && !isLoading) {
+                com.familylogbook.app.ui.component.HealthEmptyState(
+                    modifier = Modifier.align(Alignment.Center),
+                    onAddEntry = onNavigateToAddEntry
+                )
+            } else {
+                if (isLoading && allEntries.isEmpty()) {
+                    // Show loading indicator on initial load
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        com.familylogbook.app.ui.component.LoadingIndicator(
+                            message = "Učitavanje zdravstvenih zapisa..."
+                        )
+                    }
+                } else {
+                    PullToRefreshBox(
+                        isRefreshing = isLoading,
+                        onRefresh = {
+                            viewModel.refreshAll()
+                        },
+                        state = pullToRefreshState,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(
+                                start = 16.dp,
+                                end = 16.dp,
+                                top = 16.dp,
+                                bottom = 100.dp // Extra padding for FAB buttons at bottom
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                            state = lazyListState
+                        ) {
                 // 0. Active Timers Card (if any)
                 if (activeTimers.isNotEmpty()) {
                     items(activeTimers) { timer ->
                         ActiveTimerCard(
                             timer = timer,
-                            onCancel = { TimerManager.cancelTimer(timer.id) }
+                            onCancel = { TimerManager.cancelTimer(context, timer.id) }
                         )
                     }
                 }
@@ -297,40 +411,75 @@ fun HomeScreen(
                 item {
                     ImportantCardsGrid(
                         persons = persons,
-                        entities = entities,
                         entries = allEntries,
                         onChildClick = {
                             // Navigate to first child profile
                             val firstChild = persons.firstOrNull { it.type == com.familylogbook.app.domain.model.PersonType.CHILD }
                             firstChild?.let { onNavigateToPersonProfile(it.id) }
                         },
-                        onEntityClick = { entityId ->
-                            // Navigate to entity profile
-                            onNavigateToEntityProfile(entityId)
+                        onHealthClick = {
+                            // Already on Health tab; show category detail for quick focus
+                            onNavigateToCategoryDetail(Category.HEALTH)
                         },
-                        onShoppingClick = {
-                            // Navigate to shopping category detail screen
-                            onNavigateToCategoryDetail(Category.SHOPPING)
+                        onDayClick = {
+                            onNavigateToCategoryDetail(Category.DAY)
                         },
                         onAdviceClick = {
                             // Scroll to advice pills section (or show all advice)
                             onNavigateToAdvice()
                         },
-                        onSmartHomeClick = {
-                            // First try to open Google Home app
-                            val opened = smartHomeManager.openGoogleHomeApp()
-                            if (!opened) {
-                                // Fallback to Play Store only if app is not installed
-                                try {
-                                    val intent = Intent(Intent.ACTION_VIEW).apply {
-                                        data = Uri.parse("market://details?id=com.google.android.apps.chromecast.app")
-                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                    }
-                                    context.startActivity(intent)
-                                } catch (e: Exception) {
-                                    // Ignore
-                                }
-                            }
+                        // Smart Home click handler removed - no longer needed for Parent OS
+                    )
+                }
+                
+                // 2.5. Medicine Tracker Card (Parent OS core feature)
+                item {
+                    val medicineEntries = allEntries.filter { 
+                        it.category == Category.MEDICINE || 
+                        (it.category == Category.HEALTH && it.medicineGiven != null)
+                    }
+                    
+                    MedicineTrackerCard(
+                        medicineEntries = medicineEntries,
+                        onAddMedicine = {
+                            // Navigate to AddEntry with MEDICINE category pre-selected
+                            onNavigateToAddEntry()
+                        },
+                        onMedicineClick = { entry ->
+                            onNavigateToEntryDetail(entry.id)
+                        }
+                    )
+                }
+                
+                // 2.6. Symptom Tracker Card (Parent OS core feature)
+                item {
+                    val symptomEntries = allEntries.filter { 
+                        it.category == Category.SYMPTOM || 
+                        (it.category == Category.HEALTH && (it.temperature != null || !it.symptoms.isNullOrEmpty()))
+                    }
+                    
+                    SymptomTrackerCard(
+                        symptomEntries = symptomEntries,
+                        onAddSymptom = {
+                            // Navigate to AddEntry with SYMPTOM category pre-selected
+                            onNavigateToAddEntry()
+                        },
+                        onSymptomClick = { entry ->
+                            onNavigateToEntryDetail(entry.id)
+                        }
+                    )
+                }
+                
+                // 2.7. Vaccination Calendar Card (Parent OS core feature)
+                item {
+                    VaccinationCalendarCard(
+                        viewModel = viewModel,
+                        onAddVaccination = {
+                            // Navigate to AddEntry with VACCINATION category pre-selected
+                            onNavigateToAddEntry()
+                        },
+                        onVaccinationClick = { entry ->
+                            onNavigateToEntryDetail(entry.id)
                         }
                     )
                 }
@@ -341,7 +490,7 @@ fun HomeScreen(
                     allEntries
                         .sortedByDescending { it.timestamp }
                         .take(10) // Check more entries to find best advice
-                        .filter { it.category != Category.OTHER && it.category != Category.SHOPPING }
+                        .filter { it.category != Category.OTHER }
                         .take(2) // Limit to max 2 regular advice pills
                 }
                 
@@ -400,69 +549,7 @@ fun HomeScreen(
                     }
                 }
                 
-                // Shopping deals advice - use cached results from ViewModel
-                val shoppingEntries by derivedStateOf {
-                    allEntries
-                        .filter { it.category == Category.SHOPPING }
-                        .sortedByDescending { it.timestamp }
-                        .take(1) // Only show 1 shopping advice pill
-                }
-                
-                items(
-                    items = shoppingEntries,
-                    key = { it.id }
-                ) { entry ->
-                    // Auto-hide shopping pill if shopping is completed (all items checked)
-                    val allItemsChecked = entry.shoppingItems?.isNotEmpty() == true &&
-                        entry.checkedShoppingItems?.size == entry.shoppingItems?.size
-                    
-                    if (allItemsChecked) {
-                        return@items // Skip this pill - shopping is done
-                    }
-                    
-                    // Get cached advice (no network calls in Compose!)
-                    val shoppingAdvice = shoppingDealsCache[entry.id]
-                    val dismissedAdviceIds by viewModel.dismissedAdviceIds.collectAsState()
-                    
-                    shoppingAdvice?.let { advice ->
-                        // Skip if dismissed
-                        if (advice.id in dismissedAdviceIds) {
-                            return@let
-                        }
-                        var showDeleteDialog by remember { mutableStateOf(false) }
-                        AdvicePill(
-                            advice = advice,
-                            onClick = {
-                                onNavigateToAdviceDetail(advice)
-                            },
-                            onLongClick = {
-                                showDeleteDialog = true
-                            }
-                        )
-                        if (showDeleteDialog) {
-                            androidx.compose.material3.AlertDialog(
-                                onDismissRequest = { showDeleteDialog = false },
-                                title = { Text("Obriši savjet?") },
-                                text = { Text("Želiš li obrisati ovaj savjet?") },
-                                confirmButton = {
-                                    TextButton(
-                                        onClick = {
-                                            viewModel.dismissAdvice(advice.id)
-                                            showDeleteDialog = false
-                                        }
-                                    ) {
-                                        Text("Obriši")
-                                    }
-                                },
-                                dismissButton = {
-                                    TextButton(onClick = { showDeleteDialog = false }) {
-                                        Text("Odustani")
-                                    }
-                                }
-                            )
-                        }
-                    }
-                }
+                // Shopping deals advice removed - no longer needed for Parent OS
                 
                 // 4. Recent Entries List
                 val sortedEntries by derivedStateOf {
@@ -475,80 +562,17 @@ fun HomeScreen(
                         onEntryClick = { entry ->
                             onNavigateToEntryDetail(entry.id)
                         },
-                        onShoppingItemChecked = { entryId, item, isChecked ->
-                            scope.launch {
-                                viewModel.updateShoppingItemChecked(entryId, item, isChecked)
-                            }
-                        },
                         maxItems = 10
                     )
                 }
-            }
-        }
-        
-        // Voice input button (left side)
-        FloatingActionButton(
-            onClick = {
-                val helper = speechHelper
-                // If there's an error dialog showing, close it first
-                if (showSpeechError != null) {
-                    showSpeechError = null
-                    isListening = false
-                    helper?.stopListening()
-                    return@FloatingActionButton
-                }
-                
-                if (helper != null && !isListening) {
-                    if (helper.hasPermission()) {
-                        isListening = true
-                        helper.startListening(
-                            onResult = { text ->
-                                isListening = false
-                                if (text != null && text.isNotBlank()) {
-                                    // Automatically format as shopping list if shopping keywords are detected
-                                    val formattedText = com.familylogbook.app.domain.classifier.ShoppingListFormatter.processVoiceInput(text)
-                                    onNavigateToAddEntryWithText(formattedText)
-                                }
-                            },
-                            onError = { error ->
-                                isListening = false
-                                showSpeechError = error
-                            }
-                        )
-                    } else {
-                        requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
                     }
-                } else if (isListening) {
-                    // Stop listening if already listening
-                    helper?.stopListening()
-                    isListening = false
                 }
-            },
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(16.dp),
-            containerColor = if (isListening) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary
-        ) {
-            Icon(
-                if (isListening) Icons.Default.Stop else Icons.Default.RecordVoiceOver,
-                contentDescription = if (isListening) "Zaustavi snimanje" else "Glasovni unos"
-            )
-        }
-        
-        // Add entry button (right side)
-        FloatingActionButton(
-            onClick = onNavigateToAddEntry,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp),
-            containerColor = MaterialTheme.colorScheme.primary
-        ) {
-            Icon(Icons.Default.Add, contentDescription = "Dodaj zapis")
-        }
-        
-        // Speech error dialog
-        showSpeechError?.let { error ->
-            AlertDialog(
+            }
+            
+            // Speech error dialog
+            showSpeechError?.let { error ->
+                AlertDialog(
                 onDismissRequest = { showSpeechError = null },
                 title = { Text("Glasovni unos") },
                 text = { 
@@ -585,29 +609,30 @@ fun HomeScreen(
                         Text("Odustani")
                     }
                 }
-            )
-        }
-        
-        // Cleanup on dispose
-        DisposableEffect(Unit) {
-            onDispose {
-                speechHelper?.stopListening()
+                )
             }
-        }
-        
-        // Filter Bottom Sheet
-        if (showFilterSheet) {
-            FilterBottomSheet(
+            
+            // Cleanup on dispose
+            DisposableEffect(Unit) {
+                onDispose {
+                    speechHelper?.stopListening()
+                }
+            }
+            
+            // Filter Bottom Sheet
+            if (showFilterSheet) {
+                FilterBottomSheet(
                 persons = persons,
                 entities = entities,
                 selectedPersonId = selectedPersonId,
                 selectedEntityId = selectedEntityId,
                 selectedCategory = selectedCategory,
-                onPersonSelected = { viewModel.setSelectedPerson(it) },
-                onEntitySelected = { viewModel.setSelectedEntity(it) },
-                onCategorySelected = { viewModel.setSelectedCategory(it) },
+                onPersonSelected = { personId -> viewModel.setSelectedPerson(personId) },
+                onEntitySelected = { entityId -> viewModel.setSelectedEntity(entityId) },
+                onCategorySelected = { category -> viewModel.setSelectedCategory(category) },
                 onDismiss = { showFilterSheet = false }
-            )
+                )
+            }
         }
     }
 }
@@ -618,7 +643,7 @@ fun LogEntryCard(
     person: Person?,
     entity: Entity?,
     viewModel: HomeViewModel,
-    smartHomeManager: SmartHomeManager,
+    // smartHomeManager parameter removed - no longer needed for Parent OS
     onPersonClick: (String) -> Unit = {},
     onEntityClick: (String) -> Unit = {},
     onCategoryClick: (Category) -> Unit = {},
@@ -833,19 +858,7 @@ fun LogEntryCard(
                     }
                 }
                 
-                // Shopping list with checkboxes
-                if (entry.category == Category.SHOPPING && entry.shoppingItems != null && entry.shoppingItems.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    com.familylogbook.app.ui.component.ShoppingListCard(
-                        items = entry.shoppingItems,
-                        checkedItems = entry.checkedShoppingItems ?: emptySet(),
-                        onItemChecked = { item, isChecked ->
-                            scope.launch {
-                                viewModel.updateShoppingItemChecked(entry.id, item, isChecked)
-                            }
-                        }
-                    )
-                }
+                // Shopping list removed - no longer needed for Parent OS
                 
                 // Vaccination info
                 entry.vaccinationName?.let { vaccinationName ->
@@ -879,21 +892,7 @@ fun LogEntryCard(
                     }
                 }
                 
-                // Smart Home action button
-                if (entry.category == Category.SMART_HOME) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(
-                        onClick = {
-                            showOptionsDialog = true
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.tertiary
-                        )
-                    ) {
-                        Text("🤖 Izvrši komandu")
-                    }
-                }
+                // Smart Home action button removed - no longer needed for Parent OS
             }
         }
         
@@ -930,95 +929,14 @@ fun LogEntryCard(
             }
         }
         
-        // Smart Home Options Dialog - korisnik bira kako želi izvršiti komandu
-        if (entry.category == Category.SMART_HOME && showOptionsDialog) {
-            val dialogContext = LocalContext.current
-            androidx.compose.material3.AlertDialog(
-                onDismissRequest = { showOptionsDialog = false },
-                title = { Text("💡 Odaberi kako želiš izvršiti komandu") },
-                text = {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        // Google Home app opcija (prioritet)
-                        val isHomeInstalled = smartHomeManager.isGoogleHomeAppInstalled()
-                        android.util.Log.d("HomeScreen", "Google Home app installed: $isHomeInstalled")
-                        
-                        // Uvijek prikaži opciju za Google Home app - pokušaj otvoriti ili instalirati
-                        OutlinedButton(
-                            onClick = {
-                                showOptionsDialog = false
-                                // Pokušaj otvoriti Google Home app direktno
-                                val opened = smartHomeManager.openGoogleHomeApp()
-                                if (!opened) {
-                                    // Ako ne može otvoriti, pokušaj otvoriti Play Store
-                                    try {
-                                        val intent = Intent(Intent.ACTION_VIEW).apply {
-                                            data = Uri.parse("market://details?id=com.google.android.apps.chromecast.app")
-                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                        }
-                                        dialogContext.startActivity(intent)
-                                    } catch (e: Exception) {
-                                        // Fallback to browser
-                                        val intent = Intent(Intent.ACTION_VIEW).apply {
-                                            data = Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.chromecast.app")
-                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                        }
-                                        dialogContext.startActivity(intent)
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = if (isHomeInstalled) "🏠 Google Home app" else "🏠 Otvori Google Home app",
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Text(
-                            text = if (isHomeInstalled) {
-                                "   Direktna kontrola uređaja bez glasovnih komandi"
-                            } else {
-                                "   Ako nije instaliran, otvorit će se Play Store"
-                            },
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                        )
-                        
-                        // Divider
-                        Spacer(modifier = Modifier.height(8.dp))
-                        
-                        // Gemini / Google Assistant opcija (fallback)
-                        OutlinedButton(
-                            onClick = {
-                                showOptionsDialog = false
-                                smartHomeManager.executeCommand(entry.rawText)
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("🤖 Gemini / Google Assistant")
-                        }
-                        Text(
-                            text = "   Glasovna komanda (fallback opcija)",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                        )
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { showOptionsDialog = false }) {
-                        Text("Odustani")
-                    }
-                }
-            )
-        }
+        // Smart Home Options Dialog removed - no longer needed for Parent OS
         
         // Delete confirmation dialog
         if (showDeleteDialog) {
             AlertDialog(
                 onDismissRequest = { showDeleteDialog = false },
-                title = { Text("Obriši zapis") },
-                text = { Text("Želiš li sigurno obrisati ovaj zapis? Ova akcija se ne može poništiti.") },
+                title = { Text("Obriši zdravstveni zapis") },
+                text = { Text("Želiš li sigurno obrisati ovaj zdravstveni zapis? Ova akcija se ne može poništiti.") },
                 confirmButton = {
                     TextButton(
                         onClick = {
@@ -1040,31 +958,8 @@ fun LogEntryCard(
         }
         
         // Advice Card - show for relevant categories
-        // For SHOPPING: show shopping deals advice (async)
-        // For OTHER: don't show advice
-        // For other categories: show regular advice
+        // Shopping deals advice removed - no longer needed for Parent OS
         when (entry.category) {
-            Category.SHOPPING -> {
-                // Show shopping deals advice if available
-                var shoppingAdvice by remember { mutableStateOf<com.familylogbook.app.domain.model.AdviceTemplate?>(null) }
-                var isLoadingShoppingAdvice by remember { mutableStateOf(false) }
-                
-                LaunchedEffect(entry.id) {
-                    if (!isLoadingShoppingAdvice && shoppingAdvice == null) {
-                        isLoadingShoppingAdvice = true
-                        shoppingAdvice = viewModel.getShoppingDealsAdvice(entry)
-                        isLoadingShoppingAdvice = false
-                    }
-                }
-                
-                shoppingAdvice?.let { advice ->
-                    Spacer(modifier = Modifier.height(8.dp))
-                    AdviceCard(
-                        advice = advice,
-                        category = entry.category
-                    )
-                }
-            }
             Category.OTHER -> {
                 // Don't show advice for OTHER category
             }
@@ -1096,17 +991,29 @@ fun LogEntryCard(
 }
 
 @Composable
-fun CategoryChip(category: Category, onClick: () -> Unit = {}) {
+fun CategoryChip(
+    category: Category, 
+    onClick: () -> Unit = {}
+) {
     val (label, color) = when (category) {
+        // Parent OS Core Categories
+        Category.MEDICINE -> "Lijekovi" to Color(0xFFE63946)
+        Category.SYMPTOM -> "Simptomi" to Color(0xFFFF6B6B)
+        Category.VACCINATION -> "Cjepiva" to Color(0xFF4ECDC4)
+        Category.DAY -> "Dnevne obaveze" to Color(0xFF6C5CE7)
+        
+        // Parent OS Health & Wellness
         Category.HEALTH -> "Zdravlje" to Color(0xFFFF6B6B)
+        Category.FEEDING -> "Hranjenje" to Color(0xFFFFB84D)
         Category.SLEEP -> "Spavanje" to Color(0xFF4ECDC4)
         Category.MOOD -> "Raspoloženje" to Color(0xFFFFD93D)
         Category.DEVELOPMENT -> "Razvoj" to Color(0xFF95E1D3)
-        Category.KINDERGARTEN_SCHOOL -> "Škola" to Color(0xFFAA96DA)
         Category.SCHOOL -> "Škola" to Color(0xFFAA96DA)
+        
+        // Legacy categories (kept for backward compatibility, will be removed from UI)
+        Category.KINDERGARTEN_SCHOOL -> "Škola" to Color(0xFFAA96DA)
         Category.HOME -> "Dom" to Color(0xFFF38181)
         Category.HOUSE -> "Kuća" to Color(0xFFF38181)
-        Category.FEEDING -> "Hranjenje" to Color(0xFFFFB84D)
         Category.AUTO -> "Auto" to Color(0xFFFF6B6B)
         Category.FINANCE -> "Financije" to Color(0xFF95E1D3)
         Category.WORK -> "Posao" to Color(0xFFAA96DA)
@@ -1131,7 +1038,9 @@ fun CategoryChip(category: Category, onClick: () -> Unit = {}) {
 }
 
 @Composable
-fun MoodIndicator(mood: Mood) {
+fun MoodIndicator(
+    mood: Mood
+) {
     val (label, color) = when (mood) {
         Mood.VERY_BAD -> "😢 Very Bad" to Color(0xFFE63946)
         Mood.BAD -> "😞 Bad" to Color(0xFFFF6B6B)
@@ -1153,8 +1062,22 @@ fun MoodIndicator(mood: Mood) {
     }
 }
 
+// Legacy EmptyState - replaced with standardized component
+// Keeping for backward compatibility but using new component
 @Composable
 fun EmptyState(
+    modifier: Modifier = Modifier,
+    onAddEntry: () -> Unit
+) {
+    com.familylogbook.app.ui.component.HealthEmptyState(
+        modifier = modifier,
+        onAddEntry = onAddEntry
+    )
+}
+
+// Legacy function - keeping for backward compatibility
+@Composable
+fun LegacyEmptyState(
     modifier: Modifier = Modifier,
     onAddEntry: () -> Unit
 ) {
@@ -1170,14 +1093,14 @@ fun EmptyState(
         )
         
         Text(
-            text = "Još nema zapisa",
+            text = "Još nema zdravstvenih zapisa",
             fontSize = 24.sp,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface
         )
         
         Text(
-            text = "Dodaj svoj prvi zapis da počneš praćenje obiteljskog života!",
+            text = "Zabilježi prvi lijek ili simptom da počneš praćenje zdravlja djece!",
             fontSize = 14.sp,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
             textAlign = TextAlign.Center,
@@ -1190,7 +1113,7 @@ fun EmptyState(
         ) {
             Icon(Icons.Default.Add, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Dodaj zapis")
+            Text("Zabilježi zdravstveni događaj")
         }
         
         // Quick tips
@@ -1229,9 +1152,17 @@ fun CategoryFilterChips(
     modifier: Modifier = Modifier
 ) {
     val categories = listOf(
-        Category.HEALTH, Category.FEEDING, Category.SLEEP, Category.MOOD,
-        Category.DEVELOPMENT, Category.HOME, Category.AUTO, Category.FINANCE,
-        Category.SCHOOL, Category.WORK, Category.SHOPPING, Category.SMART_HOME, Category.OTHER
+        // Parent OS categories only (hide legacy categories from UX)
+        Category.MEDICINE,
+        Category.SYMPTOM,
+        Category.VACCINATION,
+        Category.HEALTH,
+        Category.FEEDING,
+        Category.SLEEP,
+        Category.MOOD,
+        Category.DEVELOPMENT,
+        Category.SCHOOL,
+        Category.OTHER
     )
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -1261,9 +1192,17 @@ fun FilterBottomSheet(
     onDismiss: () -> Unit
 ) {
     val categories = listOf(
-        Category.HEALTH, Category.FEEDING, Category.SLEEP, Category.MOOD,
-        Category.DEVELOPMENT, Category.HOME, Category.AUTO, Category.FINANCE,
-        Category.SCHOOL, Category.WORK, Category.SHOPPING, Category.SMART_HOME, Category.OTHER
+        // Parent OS categories only (hide legacy categories from UX)
+        Category.MEDICINE,
+        Category.SYMPTOM,
+        Category.VACCINATION,
+        Category.HEALTH,
+        Category.FEEDING,
+        Category.SLEEP,
+        Category.MOOD,
+        Category.DEVELOPMENT,
+        Category.SCHOOL,
+        Category.OTHER
     )
     
     ModalBottomSheet(

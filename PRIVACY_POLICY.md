@@ -1,10 +1,10 @@
-# Pravila Privatnosti - FamilyOS
+# Pravila Privatnosti - Parent OS
 
 **Posljednja izmjena:** 5. prosinca 2025.
 
 ## 📋 Uvod
 
-FamilyOS ("mi", "naš", "aplikacija") poštuje tvoju privatnost. Ovaj dokument objašnjava kako prikupljamo, koristimo i zaštitimo tvoje podatke kada koristiš našu aplikaciju.
+Parent OS ("mi", "naš", "aplikacija") poštuje tvoju privatnost. Ovaj dokument objašnjava kako prikupljamo, koristimo i zaštitimo tvoje podatke kada koristiš našu aplikaciju.
 
 ## 🔒 Što Prikupljamo
 
@@ -27,7 +27,7 @@ Aplikacija sprema sljedeće podatke koje uneseš:
 ### Dozvole koje tražimo
 - **Notifikacije** (Android 13+): Za podsjetnike o lijekovima, servisima i hranjenju
 - **Vibracija**: Za notifikacije
-- **Točni alarmi**: Za podsjetnike na točno vrijeme
+  - Napomena: timeri i podsjetnici se odrađuju preko WorkManager-a (bez “exact alarm” permisija)
 
 ### Što NE prikupljamo
 - ❌ Lokaciju

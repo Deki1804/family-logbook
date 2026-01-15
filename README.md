@@ -1,37 +1,30 @@
-# FamilyOS 👨‍👩‍👧‍👦📱
+# Parent OS 💊📱
 
-> **Vaš kompletan obiteljski život manager** - praćenje zdravlja, hranjenja, spavanja, financija, automobila, kuće i još puno toga!
+> **Health-focused app za roditelje djece 0–8 godina**: lijekovi, simptomi, cjepiva i jasne informacije spremne za pedijatra.
 
 ## 🌟 O aplikaciji
 
-FamilyOS je sveobuhvatna Android aplikacija za upravljanje obiteljskim životom. Aplikacija omogućava roditeljima i članovima obitelji da lakše prate važne aspekte djece i obiteljskog života kroz jedinstveno sučelje.
+Parent OS je Android aplikacija fokusirana na **zdravstvene događaje** djece: brzo bilježenje, pregled povijesti i podsjetnici.
 
-**Trenutna verzija:** v0.9 (Interni beta)
+**Trenutna verzija:** 1.0.0-beta.1
 
 ## ✨ Glavne značajke
 
-### 👶 Praćenje djece i obitelji
-- **Zdravlje**: Temperatura, lijekovi, simptomi, podsjetnici za uzimanje lijekova
-- **Hranjenje**: Praćenje hranjenja (dojenje, bočica), timer, podsjetnici
-- **Spavanje**: Praćenje spavanja i budnosti
-- **Razvoj**: Bilježenje razvojnih prekretnica
-- **Raspoloženje**: Praćenje raspoloženja i emocija
+### 👶 Djeca (profili)
+- Dodavanje djece/osoba (ime, tip, emoji, datum rođenja)
+- Prikaz dobi (mjeseci/godine) i “health overview” po djetetu
 
-### 🏠 Upravljanje kućom i entitetima
-- **Automobili**: Servisi, kilometraža, troškovi
-- **Kuća**: Popravci, računi, održavanje
-- **Financije**: Praćenje troškova po kategorijama
-- **Pametna kuća**: Integracija s Google Assistantom za upravljanje pametnim uređajima
+### 💊 Zdravlje (core)
+- **Lijekovi**: brzi unos + automatski podsjetnici prema intervalu
+- **Simptomi**: temperatura + lista simptoma
+- **Cjepiva**: evidencija + preporuka sljedećeg cjepiva (HR kalendar)
+- **Hranjenje** (samo za bebe): timer + informativni podsjetnici
 
-### 📊 Statistika i pregledi
-- Grafički prikazi temperature, hranjenja, spavanja
-- Pregled troškova po kategorijama
-- Statistički pregledi po djetetu/osobi/entitetu
+### 📋 Dan (rutine)
+- Dnevne obaveze, checklist i podsjetnici
 
-### 🔔 Pametni podsjetnici
-- **Lijekovi**: Automatski podsjetnici prema intervalu uzimanja
-- **Hranjenje**: Podsjetnici za bebe (< 2 godine)
-- **Servisi i termini**: Podsjetnici za važne događaje
+### 📊 Uvid
+- Pregledi po kategorijama + povijest temperature / hranjenja (bočica)
 
 ### 💾 Sigurnost i backup
 - **Firebase integracija**: Svi podaci se sigurno pohranjuju u cloudu
@@ -59,7 +52,7 @@ app/src/main/java/com/familylogbook/app/
 │   ├── repository/          # FirestoreLogbookRepository, InMemoryLogbookRepository
 │   ├── notification/        # NotificationManager, ReminderWorker
 │   ├── export/              # ExportManager (JSON/CSV)
-│   └── smarthome/           # SmartHomeManager, SmartHomeCommandParser
+│   └── timer/               # TimerWorker (WorkManager-based timers)
 └── ui/
     ├── navigation/          # Screen definicije
     ├── screen/              # Compose ekrani
@@ -103,7 +96,7 @@ app/src/main/java/com/familylogbook/app/
 
 ```bash
 git clone <repo-url>
-cd "FamilyOS"
+cd "family-logbook"
 ```
 
 ### 2. Otvori projekt u Android Studio
@@ -135,10 +128,11 @@ Kopiraj pravila iz `firestore.rules` u Firebase Console → Firestore Database �
 
 ## 📚 Dokumentacija
 
-- **[PROJECT_STATUS.md](PROJECT_STATUS.md)** ⭐ - **Status projekta, što smo radili, plan rada** (AŽURIRANO 2025-12-08)
-- **[COMPREHENSIVE_REVIEW.md](COMPREHENSIVE_REVIEW.md)** - Detaljni pregled koda i arhitekture
-- **[TODO_v1.0.md](TODO_v1.0.md)** - Konkretne akcije i checklist za v1.0
-- **[BUILD_APK.md](BUILD_APK.md)** - Upute za kreiranje APK-a
+- **[PROJECT_STATUS.md](PROJECT_STATUS.md)** ⭐ - Status projekta i plan
+- **[FIREBASE_SETUP.md](FIREBASE_SETUP.md)** - Firebase setup
+- **[FIREBASE_RULES_DEPLOY.md](FIREBASE_RULES_DEPLOY.md)** - Deploy Firestore rules
+- **[PRODUCTION_CHECKLIST.md](PRODUCTION_CHECKLIST.md)** - Checklist za release
+- **[SECURITY_NOTES.md](SECURITY_NOTES.md)** - Sigurnosne napomene
 - **[PRIVACY_POLICY.md](PRIVACY_POLICY.md)** - Pravila privatnosti
 - **[TERMS_OF_SERVICE.md](TERMS_OF_SERVICE.md)** - Uvjeti korištenja
 - **[GDPR_COMPLIANCE.md](GDPR_COMPLIANCE.md)** - GDPR usklađenost
@@ -165,68 +159,6 @@ Lokacija: Settings → Export & Import
 - **Hrvatski jezik**: Potpuno prevedeno 🇭🇷
 - Buduće verzije će podržavati više jezika
 
-## 🎯 Trenutno stanje (v0.9)
-
-> **📌 Za najnovije informacije o statusu projekta, pogledaj [PROJECT_STATUS.md](PROJECT_STATUS.md)**
-
-### ✅ Što radi
-
-- ✅ Firestore integracija (per-user storage)
-- ✅ Anonimni login + upgrade path
-- ✅ Background podsjetnici (lijekovi, hranjenje, servisi)
-- ✅ Export/Import (JSON + CSV)
-- ✅ Smart Home integracija
-- ✅ Potpuno na hrvatskom jeziku
-- ✅ Entity Profiles (Auto, Kuća, Financije)
-- ✅ Symptom Helper
-- ✅ Bogat domain model za sve aspekte obiteljskog života
-- ✅ **NOVO:** Home Screen redesign (FamilyOS kontrolni centar)
-- ✅ **NOVO:** Shopping Deals integracija (Google Custom Search API)
-- ✅ **NOVO:** AI-powered savjeti i advice pills
-- ✅ **NOVO:** Dinamički prikaz kartica (ImportantCardsGrid)
-
-### 🔄 U razvoju
-
-- 🔄 AdviceDetailScreen crash fix (prioritet)
-- 🔄 Shopping deals optimizacija (cache mehanizam)
-- 🔄 Auth & Login Flow poboljšanja
-- 🔄 Notifikacije Runtime Permission (Android 13+)
-- 🔄 Export/Import proširenje (aiAdvice, symptoms)
-
-### 📅 Planirano za v1.0
-
-- 📅 Onboarding flow
-- 📅 UX polish i finalizacija
-- 📅 Error handling poboljšanja
-- 📅 Performance optimizacije
-
-## 🗺️ Roadmap
-
-### v0.9 (Trenutno) - Interni Beta
-- Osnovne funkcionalnosti
-- Firebase integracija
-- Lokalizacija
-- Background processing
-
-### v0.95 (Uskoro) - Prije javnog releasea
-- README i branding
-- Auth flow poboljšanja
-- Notifikacije permission
-- Export/Import proširenje
-
-### v1.0 (Planirano) - Prva javna verzija
-- Onboarding
-- UX polish
-- Finalni testing
-- App Store / Play Store release
-
-### Post v1.0
-- Multi-language support
-- Dark mode toggle
-- Widgeti za home screen
-- Wear OS companion app
-- Sharing između obitelji
-
 ## 🤝 Doprinos
 
 Projekt je trenutno u internoj beta fazi. Za pristup ili doprinos, kontaktiraj maintainera.
@@ -242,7 +174,3 @@ Za pitanja, bugove ili prijedloge, otvori issue na repozitoriju.
 ---
 
 **Napomena**: Ova aplikacija pruža generalne informacije i preporuke. Ne zamjenjuje profesionalni medicinski savjet. Za zdravstvene probleme, uvijek konzultiraj liječnika.
-
-**Version**: 0.9  
-**Phase**: 1.5 (Firebase Integration + Advanced Features)  
-**Status**: Interni Beta - Gotovo za svakodnevnu upotrebu

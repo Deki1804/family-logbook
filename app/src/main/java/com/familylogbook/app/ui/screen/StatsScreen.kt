@@ -18,6 +18,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import com.familylogbook.app.domain.model.Category
 import com.familylogbook.app.domain.model.Mood
 import com.familylogbook.app.ui.viewmodel.CategoryCount
@@ -27,40 +29,64 @@ import com.familylogbook.app.ui.viewmodel.StatsViewModel
 @Composable
 fun StatsScreen(
     viewModel: StatsViewModel,
-    onCategoryClick: (Category) -> Unit = {}
+    onCategoryClick: (Category) -> Unit = {},
+    onNavigateToSettings: () -> Unit = {}
 ) {
     val categoryCounts by viewModel.categoryCounts.collectAsState()
     val moodCounts by viewModel.moodCounts.collectAsState()
     val temperatureHistory by viewModel.temperatureHistory.collectAsState()
     val feedingHistory by viewModel.feedingHistory.collectAsState()
     
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(24.dp)
-    ) {
-            Text(
-                text = "Statistika",
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Uvid") },
+                actions = {
+                    IconButton(onClick = onNavigateToSettings) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Postavke"
+                        )
+                    }
+                }
             )
-        
-        // Category stats (clickable)
-            Text(
-                text = "Zapisi po kategoriji",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.SemiBold
+        }
+    ) { paddingValues ->
+        if (categoryCounts.isEmpty() && moodCounts.isEmpty() && temperatureHistory.isEmpty() && feedingHistory.isEmpty()) {
+            com.familylogbook.app.ui.component.StatsEmptyState(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
             )
-        
-        if (categoryCounts.isEmpty()) {
-                Text(
-                    text = "Još nema zapisa",
-                    fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                )
         } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+                Text(
+                    text = "Statistika",
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                
+                // Category stats (clickable)
+                Text(
+                    text = "Zdravstveni zapisi po kategoriji",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                
+                if (categoryCounts.isEmpty()) {
+                    Text(
+                        text = "Još nema zdravstvenih zapisa",
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                } else {
             categoryCounts.forEach { categoryCount ->
                 CategoryStatRow(
                     categoryCount = categoryCount,
@@ -126,6 +152,8 @@ fun StatsScreen(
             )
         } else {
             SimpleFeedingChart(feedingHistory = feedingHistory)
+        }
+            }
         }
     }
 }
@@ -267,6 +295,10 @@ fun CategoryStatRow(
     onClick: () -> Unit = {}
 ) {
     val (label, color) = when (categoryCount.category) {
+        Category.MEDICINE -> "Lijekovi" to Color(0xFFFF6B6B)
+        Category.SYMPTOM -> "Simptomi" to Color(0xFFFF5252)
+        Category.VACCINATION -> "Cjepiva" to Color(0xFF4CAF50)
+        Category.DAY -> "Dnevne obaveze" to Color(0xFF2196F3)
         Category.HEALTH -> "Zdravlje" to Color(0xFFFF6B6B)
         Category.SLEEP -> "Spavanje" to Color(0xFF4ECDC4)
         Category.MOOD -> "Raspoloženje" to Color(0xFFFFD93D)

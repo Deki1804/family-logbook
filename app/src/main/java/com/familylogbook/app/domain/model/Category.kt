@@ -1,23 +1,27 @@
 package com.familylogbook.app.domain.model
 
 enum class Category {
-    // Health & Wellness
-    HEALTH,
-    FEEDING,
-    SLEEP,
-    MOOD,
-    DEVELOPMENT,
+    // Health & Wellness (Parent OS focus)
+    MEDICINE,      // Lijekovi
+    SYMPTOM,       // Simptomi
+    VACCINATION,   // Cjepiva
+    HEALTH,        // Opće zdravlje
+    FEEDING,       // Hranjenje (za bebe)
+    SLEEP,         // Spavanje (za bebe)
+    MOOD,          // Raspoloženje
+    DEVELOPMENT,   // Razvoj
     
-    // Family Life
+    // Day & Activities
+    DAY,           // Dnevne obaveze (vrtić, rutine, checklist)
+    SCHOOL,        // Vrtić / škola
+    
+    // Legacy (keeping for backward compatibility - will be removed in future)
     AUTO,
     HOUSE,
     FINANCE,
-    SCHOOL,
     WORK,
     SHOPPING,
-    SMART_HOME, // Smart home commands (lights, vacuum, music, etc.)
-    
-    // Legacy (keeping for backward compatibility)
+    SMART_HOME,
     KINDERGARTEN_SCHOOL,
     HOME,
     OTHER

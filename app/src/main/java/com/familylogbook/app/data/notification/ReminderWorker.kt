@@ -105,22 +105,29 @@ class ReminderWorker(
             }
             
             entries.forEach { entry ->
-                // Check medicine reminders
-                entry.nextMedicineTime?.let { nextTime ->
-                    val timeUntilNext = nextTime - now
-                    // Show notification if it's time (within 5 minutes) or overdue
-                    if (timeUntilNext <= 5 * 60 * 1000L && timeUntilNext >= -30 * 60 * 1000L) {
-                        val personName = entry.personId?.let { personId ->
-                            persons.find { it.id == personId }?.name
-                        } ?: entry.childId?.let { childId ->
-                            // Legacy child support - try to find as person with same ID
-                            persons.find { it.id == childId }?.name ?: "Osoba"
-                        } ?: null
-                        notificationManager.showMedicineReminder(
-                            medicineName = entry.medicineGiven ?: "Lijek",
-                            personName = personName,
-                            notificationId = entry.id.hashCode()
-                        )
+                // Check medicine reminders (Parent OS core feature)
+                // Use MedicineEntry helper to check if this is a medicine entry
+                if (com.familylogbook.app.domain.model.MedicineEntry.isMedicineEntry(entry)) {
+                    entry.nextMedicineTime?.let { nextTime ->
+                        val timeUntilNext = nextTime - now
+                        // Show notification if it's time (within 5 minutes) or overdue (up to 30 minutes late)
+                        if (timeUntilNext <= 5 * 60 * 1000L && timeUntilNext >= -30 * 60 * 1000L) {
+                            val personName = entry.personId?.let { personId ->
+                                persons.find { it.id == personId }?.name
+                            } ?: entry.childId?.let { childId ->
+                                // Legacy child support - try to find as person with same ID
+                                persons.find { it.id == childId }?.name ?: "Osoba"
+                            } ?: "Osoba"
+                            
+                            val medicineName = entry.medicineGiven ?: "Lijek"
+                            val dosage = entry.medicineDosage?.let { " ($it)" } ?: ""
+                            
+                            notificationManager.showMedicineReminder(
+                                medicineName = "$medicineName$dosage",
+                                personName = personName,
+                                notificationId = entry.id.hashCode()
+                            )
+                        }
                     }
                 }
                 

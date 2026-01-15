@@ -50,9 +50,11 @@ fun TodayOverviewCard(
         .minByOrNull { it.nextVaccinationDate ?: Long.MAX_VALUE }
     
     // Count today's entries by category
-    val shoppingCount = todayEntries.count { it.category == com.familylogbook.app.domain.model.Category.SHOPPING }
+    val medicineCount = todayEntries.count { it.category == com.familylogbook.app.domain.model.Category.MEDICINE }
+    val symptomCount = todayEntries.count { it.category == com.familylogbook.app.domain.model.Category.SYMPTOM }
+    val vaccinationCount = todayEntries.count { it.category == com.familylogbook.app.domain.model.Category.VACCINATION }
     val healthCount = todayEntries.count { it.category == com.familylogbook.app.domain.model.Category.HEALTH }
-    val smartHomeCount = todayEntries.count { it.category == com.familylogbook.app.domain.model.Category.SMART_HOME }
+    val dayCount = todayEntries.count { it.category == com.familylogbook.app.domain.model.Category.DAY }
     
     Card(
         modifier = modifier
@@ -141,9 +143,11 @@ fun TodayOverviewCard(
                 // Today's summary
                 if (todayEntries.isNotEmpty()) {
                     val summaryParts = mutableListOf<String>()
-                    if (shoppingCount > 0) summaryParts.add("$shoppingCount shopping")
+                    if (medicineCount > 0) summaryParts.add("$medicineCount lijekovi")
+                    if (symptomCount > 0) summaryParts.add("$symptomCount simptomi")
+                    if (vaccinationCount > 0) summaryParts.add("$vaccinationCount cjepiva")
                     if (healthCount > 0) summaryParts.add("$healthCount zdravlje")
-                    if (smartHomeCount > 0) summaryParts.add("$smartHomeCount smart home")
+                    if (dayCount > 0) summaryParts.add("$dayCount obaveze")
                     if (summaryParts.isEmpty()) summaryParts.add("${todayEntries.size} zapisa")
                     
                     Row(

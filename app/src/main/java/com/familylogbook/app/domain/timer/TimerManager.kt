@@ -1,16 +1,16 @@
 package com.familylogbook.app.domain.timer
 
-import android.app.AlarmManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
-import android.os.Build
-import androidx.core.app.AlarmManagerCompat
-import com.familylogbook.app.data.timer.TimerAlarmReceiver
+import androidx.work.Data
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import com.familylogbook.app.data.timer.TimerWorker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.regex.Pattern
+import java.util.concurrent.TimeUnit
 
 /**
  * Manages timers for the app.
@@ -119,7 +119,7 @@ object TimerManager {
         _activeTimers.value = _activeTimers.value + timerInfo
         
         // Set up alarm
-        setAlarm(context, timerInfo)
+        scheduleWork(context, timerInfo)
         
         return timerId
     }
@@ -130,42 +130,39 @@ object TimerManager {
     fun cancelTimer(timerId: String) {
         _activeTimers.value = _activeTimers.value.filter { it.id != timerId }
     }
+
+    /**
+     * Cancels a timer AND its scheduled background work (if context provided).
+     */
+    fun cancelTimer(context: Context, timerId: String) {
+        _activeTimers.value = _activeTimers.value.filter { it.id != timerId }
+        WorkManager.getInstance(context).cancelUniqueWork(timerWorkName(timerId))
+    }
     
     /**
      * Sets up Android alarm for timer.
      */
-    private fun setAlarm(context: Context, timerInfo: TimerInfo) {
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        
-        val intent = Intent(context, TimerAlarmReceiver::class.java).apply {
-            putExtra("timer_id", timerInfo.id)
-            putExtra("description", timerInfo.description)
-        }
-        
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            timerInfo.id.hashCode(),
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    private fun scheduleWork(context: Context, timerInfo: TimerInfo) {
+        val delayMs = (timerInfo.endTime - System.currentTimeMillis()).coerceAtLeast(0L)
+
+        val data = Data.Builder()
+            .putString(TimerWorker.KEY_TIMER_ID, timerInfo.id)
+            .putString(TimerWorker.KEY_DESCRIPTION, timerInfo.description)
+            .build()
+
+        val request = OneTimeWorkRequestBuilder<TimerWorker>()
+            .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
+            .setInputData(data)
+            .build()
+
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            timerWorkName(timerInfo.id),
+            ExistingWorkPolicy.REPLACE,
+            request
         )
-        
-        val triggerTime = timerInfo.endTime
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            AlarmManagerCompat.setExactAndAllowWhileIdle(
-                alarmManager,
-                AlarmManager.RTC_WAKEUP,
-                triggerTime,
-                pendingIntent
-            )
-        } else {
-            alarmManager.setExact(
-                AlarmManager.RTC_WAKEUP,
-                triggerTime,
-                pendingIntent
-            )
-        }
     }
+
+    private fun timerWorkName(timerId: String): String = "timer_$timerId"
     
     data class TimerCommand(
         val durationMinutes: Int,

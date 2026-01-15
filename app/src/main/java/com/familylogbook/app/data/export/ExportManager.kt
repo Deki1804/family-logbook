@@ -53,8 +53,10 @@ class ExportManager {
             personObj.put("id", person.id)
             personObj.put("name", person.name)
             personObj.put("type", person.type.name)
+            person.dateOfBirth?.let { personObj.put("dateOfBirth", it) }
             personObj.put("avatarColor", person.avatarColor)
             personObj.put("emoji", person.emoji)
+            person.relationship?.let { personObj.put("relationship", it) }
             personsArray.put(personObj)
         }
         json.put("persons", personsArray)
@@ -68,6 +70,11 @@ class ExportManager {
             entityObj.put("type", entity.type.name)
             entityObj.put("avatarColor", entity.avatarColor)
             entityObj.put("emoji", entity.emoji)
+            if (entity.metadata.isNotEmpty()) {
+                val metadataObj = JSONObject()
+                entity.metadata.forEach { (k, v) -> metadataObj.put(k, v) }
+                entityObj.put("metadata", metadataObj)
+            }
             entitiesArray.put(entityObj)
         }
         json.put("entities", entitiesArray)
@@ -87,10 +94,17 @@ class ExportManager {
             entry.mood?.let { entryObj.put("mood", it.name) }
             entry.temperature?.let { entryObj.put("temperature", it) }
             entry.medicineGiven?.let { entryObj.put("medicineGiven", it) }
+            entry.medicineDosage?.let { entryObj.put("medicineDosage", it) }
             entry.medicineTimestamp?.let { entryObj.put("medicineTimestamp", it) }
+            entry.medicineIntervalHours?.let { entryObj.put("medicineIntervalHours", it) }
+            entry.nextMedicineTime?.let { entryObj.put("nextMedicineTime", it) }
             entry.feedingType?.let { entryObj.put("feedingType", it.name) }
             entry.feedingAmount?.let { entryObj.put("feedingAmount", it) }
             entry.aiAdvice?.let { entryObj.put("aiAdvice", it) }
+            entry.reminderDate?.let { entryObj.put("reminderDate", it) }
+            entry.dayEntryType?.let { entryObj.put("dayEntryType", it.name) }
+            entry.isCompleted?.let { entryObj.put("isCompleted", it) }
+            entry.dueDate?.let { entryObj.put("dueDate", it) }
             entry.symptoms?.takeIf { it.isNotEmpty() }?.let { symptomsList ->
                 val symptomsArray = JSONArray()
                 symptomsList.forEach { symptom ->
@@ -112,7 +126,12 @@ class ExportManager {
                 }
                 entryObj.put("checkedShoppingItems", checkedArray)
             }
+            entry.amount?.let { entryObj.put("amount", it) }
+            entry.currency?.let { entryObj.put("currency", it) }
+            entry.mileage?.let { entryObj.put("mileage", it) }
+            entry.serviceType?.let { entryObj.put("serviceType", it) }
             entry.vaccinationName?.let { entryObj.put("vaccinationName", it) }
+            entry.vaccinationDate?.let { entryObj.put("vaccinationDate", it) }
             entry.nextVaccinationDate?.let { entryObj.put("nextVaccinationDate", it) }
             entry.nextVaccinationMessage?.let { entryObj.put("nextVaccinationMessage", it) }
             entriesArray.put(entryObj)
@@ -137,7 +156,14 @@ class ExportManager {
         
         val csv = StringBuilder()
         // Header (v2.0 - expanded)
-        csv.appendLine("Date,Time,Person/Child,Entity,Category,Text,Tags,Mood,Temperature,Medicine,Feeding Type,Feeding Amount,Amount,Currency,Mileage,Service Type")
+        csv.appendLine(
+            "Date,Time,Person/Child,Entity,Category,Text,Tags,Mood,Temperature,Symptoms," +
+                "Medicine,Medicine Dosage,Medicine Interval Hours,Next Medicine Time," +
+                "Feeding Type,Feeding Amount," +
+                "Reminder Date,Day Entry Type,Is Completed,Due Date," +
+                "Vaccination Name,Vaccination Date,Next Vaccination Date," +
+                "Amount,Currency,Mileage,Service Type"
+        )
         
         // Data rows
         entries.forEach { entry ->
@@ -165,9 +191,20 @@ class ExportManager {
                     entry.tags.joinToString(";"),
                     entry.mood?.name ?: "",
                     entry.temperature?.toString() ?: "",
+                    entry.symptoms?.joinToString(";") ?: "",
                     entry.medicineGiven ?: "",
+                    entry.medicineDosage ?: "",
+                    entry.medicineIntervalHours?.toString() ?: "",
+                    entry.nextMedicineTime?.let { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(it)) } ?: "",
                     entry.feedingType?.name ?: "",
                     entry.feedingAmount?.toString() ?: "",
+                    entry.reminderDate?.let { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(it)) } ?: "",
+                    entry.dayEntryType?.name ?: "",
+                    entry.isCompleted?.toString() ?: "",
+                    entry.dueDate?.let { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(it)) } ?: "",
+                    entry.vaccinationName ?: "",
+                    entry.vaccinationDate?.let { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(it)) } ?: "",
+                    entry.nextVaccinationDate?.let { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(it)) } ?: "",
                     entry.amount?.toString() ?: "",
                     entry.currency ?: "",
                     entry.mileage?.toString() ?: "",
@@ -222,8 +259,14 @@ class ExportManager {
                         } catch (e: Exception) {
                             PersonType.CHILD // Default fallback
                         },
+                        dateOfBirth = if (personObj.has("dateOfBirth") && !personObj.isNull("dateOfBirth")) {
+                            personObj.getLong("dateOfBirth")
+                        } else null,
                         avatarColor = personObj.getString("avatarColor"),
-                        emoji = personObj.getString("emoji")
+                        emoji = personObj.getString("emoji"),
+                        relationship = if (personObj.has("relationship") && !personObj.isNull("relationship")) {
+                            personObj.getString("relationship")
+                        } else null
                     )
                     personsList.add(person)
                 }
@@ -235,6 +278,18 @@ class ExportManager {
                 val entitiesArray = json.getJSONArray("entities")
                 for (i in 0 until entitiesArray.length()) {
                     val entityObj = entitiesArray.getJSONObject(i)
+                    val metadata: Map<String, String> = if (entityObj.has("metadata") && !entityObj.isNull("metadata")) {
+                        val metadataObj = entityObj.getJSONObject("metadata")
+                        metadataObj.keys().asSequence().mapNotNull { key ->
+                            try {
+                                key to metadataObj.getString(key)
+                            } catch (e: Exception) {
+                                null
+                            }
+                        }.toMap()
+                    } else {
+                        emptyMap()
+                    }
                     val entity = Entity(
                         id = entityObj.getString("id"),
                         name = entityObj.getString("name"),
@@ -244,7 +299,8 @@ class ExportManager {
                             EntityType.OTHER // Default fallback
                         },
                         avatarColor = entityObj.getString("avatarColor"),
-                        emoji = entityObj.getString("emoji")
+                        emoji = entityObj.getString("emoji"),
+                        metadata = metadata
                     )
                     entitiesList.add(entity)
                 }
@@ -314,6 +370,9 @@ class ExportManager {
                         medicineGiven = if (entryObj.has("medicineGiven") && !entryObj.isNull("medicineGiven")) {
                             entryObj.getString("medicineGiven")
                         } else null,
+                        medicineDosage = if (entryObj.has("medicineDosage") && !entryObj.isNull("medicineDosage")) {
+                            entryObj.getString("medicineDosage")
+                        } else null,
                         medicineTimestamp = if (entryObj.has("medicineTimestamp") && !entryObj.isNull("medicineTimestamp")) {
                             entryObj.getLong("medicineTimestamp")
                         } else null,
@@ -341,6 +400,23 @@ class ExportManager {
                         } else null,
                         reminderDate = if (entryObj.has("reminderDate") && !entryObj.isNull("reminderDate")) {
                             entryObj.getLong("reminderDate")
+                        } else null,
+                        dayEntryType = if (entryObj.has("dayEntryType") && !entryObj.isNull("dayEntryType")) {
+                            try {
+                                com.familylogbook.app.domain.model.DayEntryType.valueOf(entryObj.getString("dayEntryType"))
+                            } catch (e: Exception) {
+                                null
+                            }
+                        } else null,
+                        isCompleted = if (entryObj.has("isCompleted") && !entryObj.isNull("isCompleted")) {
+                            try {
+                                entryObj.getBoolean("isCompleted")
+                            } catch (e: Exception) {
+                                null
+                            }
+                        } else null,
+                        dueDate = if (entryObj.has("dueDate") && !entryObj.isNull("dueDate")) {
+                            entryObj.getLong("dueDate")
                         } else null,
                         aiAdvice = if (entryObj.has("aiAdvice") && !entryObj.isNull("aiAdvice")) {
                             entryObj.getString("aiAdvice")
@@ -377,6 +453,9 @@ class ExportManager {
                         } else null,
                         vaccinationName = if (entryObj.has("vaccinationName") && !entryObj.isNull("vaccinationName")) {
                             entryObj.getString("vaccinationName")
+                        } else null,
+                        vaccinationDate = if (entryObj.has("vaccinationDate") && !entryObj.isNull("vaccinationDate")) {
+                            entryObj.getLong("vaccinationDate")
                         } else null,
                         nextVaccinationDate = if (entryObj.has("nextVaccinationDate") && !entryObj.isNull("nextVaccinationDate")) {
                             entryObj.getLong("nextVaccinationDate")

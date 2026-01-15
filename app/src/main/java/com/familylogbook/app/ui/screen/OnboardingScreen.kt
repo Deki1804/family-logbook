@@ -13,6 +13,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,6 +40,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.familylogbook.app.domain.model.PersonType
 import com.familylogbook.app.ui.viewmodel.SettingsViewModel
+import com.familylogbook.app.ui.screen.PersonDatePickerDialog
+import com.familylogbook.app.ui.util.DateFormatter
+import com.familylogbook.app.ui.util.DateVisualTransformation
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -194,26 +204,36 @@ fun OnboardingWelcomePage() {
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "👨‍👩‍👧‍👦",
+            text = "💊",
             fontSize = 80.sp
         )
         
         Spacer(modifier = Modifier.height(32.dp))
         
         Text(
-            text = "Dobrodošli u FamilyOS!",
+            text = "Dobrodošli u Parent OS",
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        Text(
+            text = "Zdravlje Djece",
+            fontSize = 18.sp,
+            color = MaterialTheme.colorScheme.primary,
             textAlign = TextAlign.Center
         )
         
         Spacer(modifier = Modifier.height(16.dp))
         
         Text(
-            text = "Vaš kompletan upravitelj obiteljskog života. Praćenje zdravlja, hranjenja, spavanja, financija i još puno toga!",
+            text = "Prati zdravlje djece, lijekove, simptome i cjepiva.\nSve informacije spremne za pedijatra – kad je to najpotrebnije.",
             fontSize = 16.sp,
             textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+            lineHeight = 24.sp
         )
     }
 }
@@ -229,6 +249,8 @@ fun OnboardingAddPersonPage(
     persons: List<com.familylogbook.app.domain.model.Person>
 ) {
     val scope = rememberCoroutineScope()
+    val newPersonDateOfBirth by settingsViewModel.newPersonDateOfBirth.collectAsState()
+    var showDatePicker by remember { mutableStateOf(false) }
     
     Box(
         modifier = Modifier
@@ -355,6 +377,178 @@ fun OnboardingAddPersonPage(
                             }
                         }
                         
+                        // Date of birth picker (REQUIRED for CHILD type)
+                        if (newPersonType == PersonType.CHILD) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            // Professional date picker section
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                                ),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    // Label and hint
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.CalendarToday,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(
+                                            text = "Datum rođenja *",
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    
+                                    Text(
+                                        text = "Koristi se za cjepiva i zdravstveni sažetak",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                        modifier = Modifier.padding(start = 26.dp)
+                                    )
+                                    
+                                    // Date input field with manual entry and validation
+                                    // "Digits as truth" pattern - only store raw digits (ddMMyyyy)
+                                    var dobDigits by remember { mutableStateOf("") }
+                                    var dateError by remember { mutableStateOf<String?>(null) }
+                                    
+                                    // Update dobDigits when newPersonDateOfBirth changes externally
+                                    LaunchedEffect(newPersonDateOfBirth) {
+                                        if (newPersonDateOfBirth != null) {
+                                            dobDigits = DateFormatter.timestampToDigits(newPersonDateOfBirth!!)
+                                        } else {
+                                            dobDigits = ""
+                                        }
+                                    }
+                                    
+                                    OutlinedTextField(
+                                        value = dobDigits, // Store only digits as value
+                                        onValueChange = { newText ->
+                                            // Always extract only digits from input - this is the only truth
+                                            val extractedDigits = newText.filter { it.isDigit() }.take(8)
+                                            
+                                            // Debug logging
+                                            android.util.Log.d("DateInput", "newText: '$newText', extractedDigits: '$extractedDigits'")
+                                            
+                                            dobDigits = extractedDigits
+                                            
+                                            // Validate and parse date only if we have 8 digits (full date)
+                                            if (dobDigits.length == 8) {
+                                                val formatted = DateFormatter.formatDobDigits(dobDigits) // dd.MM.yyyy
+                                                android.util.Log.d("DateInput", "Formatted: '$formatted' from digits: '$dobDigits'")
+                                                val parsedDate = parseDate(formatted)
+                                                if (parsedDate != null) {
+                                                    dateError = null
+                                                    settingsViewModel.setNewPersonDateOfBirth(parsedDate)
+                                                } else {
+                                                    android.util.Log.e("DateInput", "Invalid date: '$formatted'")
+                                                    dateError = "Neispravan format datuma"
+                                                }
+                                            } else {
+                                                dateError = null
+                                                settingsViewModel.setNewPersonDateOfBirth(null)
+                                            }
+                                        },
+                                        visualTransformation = DateVisualTransformation(), // Format visually
+                                        modifier = Modifier.fillMaxWidth(),
+                                        label = { Text("Unesi datum") },
+                                        placeholder = { Text("dd.MM.yyyy") },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.Event,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(22.dp),
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        },
+                                        trailingIcon = {
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                if (dobDigits.isNotEmpty()) {
+                                                    IconButton(
+                                                        onClick = {
+                                                            dobDigits = ""
+                                                            dateError = null
+                                                            settingsViewModel.setNewPersonDateOfBirth(null)
+                                                        },
+                                                        modifier = Modifier.size(40.dp)
+                                                    ) {
+                                                        Icon(
+                                                            Icons.Default.Close,
+                                                            contentDescription = "Obriši datum",
+                                                            modifier = Modifier.size(18.dp),
+                                                            tint = MaterialTheme.colorScheme.error
+                                                        )
+                                                    }
+                                                }
+                                                // Optional: Calendar button to open date picker
+                                                IconButton(
+                                                    onClick = { showDatePicker = true },
+                                                    modifier = Modifier.size(40.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.CalendarToday,
+                                                        contentDescription = "Odaberi iz kalendara",
+                                                        modifier = Modifier.size(20.dp),
+                                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        isError = dateError != null,
+                                        supportingText = {
+                                            if (dateError != null) {
+                                                Text(dateError!!, color = MaterialTheme.colorScheme.error)
+                                            } else {
+                                                Text("Format: dd.MM.yyyy (npr. 15.03.2020)")
+                                            }
+                                        },
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                                            errorBorderColor = MaterialTheme.colorScheme.error
+                                        ),
+                                        shape = RoundedCornerShape(12.dp),
+                                        keyboardOptions = KeyboardOptions(
+                                            keyboardType = KeyboardType.Number
+                                        )
+                                    )
+                                }
+                            }
+                            
+                            if (showDatePicker) {
+                                PersonDatePickerDialog(
+                                    initialDate = newPersonDateOfBirth,
+                                    onDateSelected = { date ->
+                                        settingsViewModel.setNewPersonDateOfBirth(date)
+                                        showDatePicker = false
+                                    },
+                                    onDismiss = { showDatePicker = false }
+                                )
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        val isLoadingPerson by settingsViewModel.isLoading.collectAsState()
+                        
                         Button(
                             onClick = {
                                 scope.launch {
@@ -364,9 +558,15 @@ fun OnboardingAddPersonPage(
                                 }
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            enabled = newPersonName.trim().isNotEmpty()
+                            enabled = !isLoadingPerson && 
+                                      newPersonName.trim().isNotEmpty() && 
+                                      (newPersonType != PersonType.CHILD || newPersonDateOfBirth != null)
                         ) {
-                            Text("Dodaj osobu")
+                            if (isLoadingPerson) {
+                                com.familylogbook.app.ui.component.InlineLoadingIndicator()
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                            Text(if (isLoadingPerson) "Spremanje..." else "Dodaj osobu")
                         }
                         
                         TextButton(
@@ -563,6 +763,8 @@ fun OnboardingAddEntityPage(
                             }
                         }
                         
+                        val isLoadingEntity by settingsViewModel.isLoading.collectAsState()
+                        
                         Button(
                             onClick = {
                                 scope.launch {
@@ -572,9 +774,13 @@ fun OnboardingAddEntityPage(
                                 }
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            enabled = newEntityName.trim().isNotEmpty()
+                            enabled = !isLoadingEntity && newEntityName.trim().isNotEmpty()
                         ) {
-                            Text("Dodaj entitet")
+                            if (isLoadingEntity) {
+                                com.familylogbook.app.ui.component.InlineLoadingIndicator()
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                            Text(if (isLoadingEntity) "Spremanje..." else "Dodaj entitet")
                         }
                         
                         TextButton(
@@ -652,3 +858,45 @@ fun OnboardingCompletePage() {
     }
 }
 
+/**
+ * Parses date string (dd.MM.yyyy) and validates it
+ * Returns timestamp in milliseconds if valid, null otherwise
+ */
+private fun parseDate(dateString: String): Long? {
+    if (dateString.length < 10) return null // Need full format: dd.MM.yyyy
+    
+    try {
+        val parts = dateString.split(".")
+        if (parts.size != 3) return null
+        
+        val day = parts[0].toIntOrNull() ?: return null
+        val month = parts[1].toIntOrNull() ?: return null
+        val year = parts[2].toIntOrNull() ?: return null
+        
+        // Validate ranges
+        if (day < 1 || day > 31) return null
+        if (month < 1 || month > 12) return null
+        if (year < 1900 || year > java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)) return null
+        
+        // Validate actual date (e.g., 31.02.2020 is invalid)
+        val calendar = java.util.Calendar.getInstance()
+        calendar.set(java.util.Calendar.YEAR, year)
+        calendar.set(java.util.Calendar.MONTH, month - 1) // Calendar months are 0-based
+        calendar.set(java.util.Calendar.DAY_OF_MONTH, day)
+        calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
+        calendar.set(java.util.Calendar.MINUTE, 0)
+        calendar.set(java.util.Calendar.SECOND, 0)
+        calendar.set(java.util.Calendar.MILLISECOND, 0)
+        
+        // Check if date was adjusted (invalid date like 31.02 would be adjusted)
+        if (calendar.get(java.util.Calendar.DAY_OF_MONTH) != day ||
+            calendar.get(java.util.Calendar.MONTH) != month - 1 ||
+            calendar.get(java.util.Calendar.YEAR) != year) {
+            return null
+        }
+        
+        return calendar.timeInMillis
+    } catch (e: Exception) {
+        return null
+    }
+}

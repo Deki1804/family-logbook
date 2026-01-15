@@ -9,11 +9,13 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.familylogbook.app.data.auth.AuthManager
+import com.google.firebase.auth.FirebaseAuth
 
 @Composable
 fun AccountInfoCard(
@@ -23,9 +25,33 @@ fun AccountInfoCard(
     onDeleteAccount: () -> Unit = {},
     onChangePassword: () -> Unit = {}
 ) {
-    val currentUser = authManager.getCurrentUser()
-    val isAnonymous = authManager.isAnonymous()
-    val userId = authManager.getCurrentUserId()
+    // Use state to force recomposition when auth state changes
+    var currentUser by remember { mutableStateOf(authManager.getCurrentUser()) }
+    var isAnonymous by remember { mutableStateOf(authManager.isAnonymous()) }
+    var userId by remember { mutableStateOf(authManager.getCurrentUserId()) }
+    
+    // Listen to Firebase Auth state changes
+    DisposableEffect(Unit) {
+        val auth = FirebaseAuth.getInstance()
+        val authStateListener = FirebaseAuth.AuthStateListener { firebaseAuth ->
+            currentUser = firebaseAuth.currentUser
+            isAnonymous = firebaseAuth.currentUser?.isAnonymous ?: false
+            userId = firebaseAuth.currentUser?.uid
+        }
+        
+        // Add listener
+        auth.addAuthStateListener(authStateListener)
+        
+        // Initial refresh
+        currentUser = authManager.getCurrentUser()
+        isAnonymous = authManager.isAnonymous()
+        userId = authManager.getCurrentUserId()
+        
+        // Remove listener on dispose
+        onDispose {
+            auth.removeAuthStateListener(authStateListener)
+        }
+    }
     
     Card(
         modifier = Modifier.fillMaxWidth(),

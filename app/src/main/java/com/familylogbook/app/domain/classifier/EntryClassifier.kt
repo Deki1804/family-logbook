@@ -20,10 +20,10 @@ class EntryClassifier {
         val mood = detectMood(lowerText)
         val tags = extractTags(lowerText, category)
         
-        // ONLY extract medicine info if category is HEALTH
-        val temperature = if (category == Category.HEALTH) extractTemperature(text) else null
-        val medicine = if (category == Category.HEALTH) extractMedicine(text) else null
-        val medicineInterval = if (category == Category.HEALTH) extractMedicineInterval(text) else null
+        // Extract medicine info if category is MEDICINE or HEALTH
+        val temperature = if (category == Category.HEALTH || category == Category.SYMPTOM) extractTemperature(text) else null
+        val medicine = if (category == Category.MEDICINE || category == Category.HEALTH) extractMedicine(text) else null
+        val medicineInterval = if (category == Category.MEDICINE || category == Category.HEALTH) extractMedicineInterval(text) else null
         
         // ONLY extract feeding info if category is FEEDING (not for shopping lists or other categories)
         val (feedingType, feedingAmount) = if (category == Category.FEEDING) extractFeeding(text) else Pair(null, null)
@@ -31,8 +31,23 @@ class EntryClassifier {
         val shoppingItems = if (category == Category.SHOPPING) extractShoppingItems(text) else null
         
         // Extract vaccination info if detected
-        val vaccinationName = if (category == Category.HEALTH) {
+        val vaccinationName = if (category == Category.VACCINATION || category == Category.HEALTH) {
             VaccinationCalendar.extractVaccinationName(text)
+        } else {
+            null
+        }
+
+        // Extract reminder date for DAY (and other reminder-like entries)
+        // NOTE: this was previously implemented but never wired into classifyEntry().
+        val reminderDate = if (
+            category == Category.DAY ||
+            lowerText.contains("podsjet") ||
+            lowerText.contains("termin") ||
+            lowerText.contains("pregled") ||
+            lowerText.contains("sutra") ||
+            lowerText.contains("za ")
+        ) {
+            extractReminderDate(text)
         } else {
             null
         }
@@ -46,6 +61,7 @@ class EntryClassifier {
             medicineIntervalHours = medicineInterval,
             feedingType = feedingType,
             feedingAmount = feedingAmount,
+            reminderDate = reminderDate,
             shoppingItems = shoppingItems,
             vaccinationName = vaccinationName,
             nextVaccinationDate = null, // Will be calculated in AddEntryViewModel based on child's age
@@ -54,16 +70,48 @@ class EntryClassifier {
     }
     
     private fun detectCategory(text: String): Category {
-        // Health keywords
-        val healthKeywords = listOf(
+        // Parent OS Core Categories - PRIORITY ORDER MATTERS!
+        
+        // MEDICINE keywords - specific medicine names and medicine-related actions
+        val medicineKeywords = listOf(
+            "medicine", "medication", "lijek", "lijekovi", "sirup", "syrup", "tableta", "tablet",
+            "nurofen", "ibuprofen", "brufen", "dalsy", "paracetamol", "panadol", "acetaminophen",
+            "tylenol", "andol", "aspirin", "antibiotik", "antibiotic", "amoxicillin", "amoksicilin",
+            "penicillin", "penicilin", "kapsula", "capsule", "drops", "kapi", "injekcija", "injection",
+            "dao lijek", "dali lijek", "dali lijekove", "gave medicine", "took medicine", "uzeli lijek",
+            "popio", "popila", "popila", "pio", "pila", "uzela", "uzeo", "uzeli", "uzela lijek", "uzeo lijek"
+        )
+        
+        // SYMPTOM keywords - symptoms and health issues
+        val symptomKeywords = listOf(
             "fever", "temperature", "temperatura", "temperaturu", "temperatur", "vrućica",
-            "sick", "ill", "medicine", "medication", "syrup", "sirup", "lijek",
-            "nurofen", "ibuprofen", "brufen", "dalsy", "paracetamol", "panadol",
-            "doctor", "hospital", "cough", "cold", "flu", "virus", "infection",
+            "cough", "cold", "flu", "virus", "infection", "kašalj", "prehlada", "gripa",
+            "pain", "ache", "hurt", "injury", "bandage", "bol", "boli", "bolest",
+            "tooth", "teeth", "dentist", "zub", "zubić", "zubobolja",
+            "grč", "grčevi", "colic", "plače", "plač", "crying", "kolika",
+            "rash", "osip", "vomiting", "povraćanje", "diarrhea", "proljev", "constipation", "zatvor",
+            "runny nose", "curek", "sneezing", "kihanje", "sore throat", "bol u grlu"
+        )
+        
+        // VACCINATION keywords
+        val vaccinationKeywords = listOf(
             "vaccine", "vaccination", "vakcina", "cjepivo", "cjepiv", "primio cjepivo", "primila cjepivo",
-            "pain", "ache", "hurt", "injury", "bandage",
-            "tooth", "teeth", "dentist", "zub", "zubić",
-            "grč", "grčevi", "colic", "plače", "plač", "crying"
+            "vaccinated", "cjepio", "cjepila", "cjepiti", "vakcinacija", "cjepiva"
+        )
+        
+        // DAY keywords - daily routines, tasks, checklists
+        val dayKeywords = listOf(
+            "rutina", "routine", "dnevna obaveza", "daily task", "checklist", "lista obaveza",
+            "task", "zadatak", "obaveza", "todo", "to do", "napraviti", "treba", "need to",
+            "morning routine", "jutarnja rutina", "evening routine", "večernja rutina",
+            "bedtime routine", "rutina prije spavanja", "playtime", "vrijeme za igru",
+            "bath time", "vrijeme za kupanje", "meal time", "vrijeme za jelo"
+        )
+        
+        // Health keywords (general health, doctor visits, etc.)
+        val healthKeywords = listOf(
+            "sick", "ill", "doctor", "hospital", "doktor", "bolnica", "pregled", "checkup",
+            "visit", "posjeta", "appointment", "termin"
         )
         
         // Sleep keywords
@@ -101,7 +149,8 @@ class EntryClassifier {
             "prijatelj", "maskenbal", "predstava"
         )
         
-        // Auto keywords
+        // Legacy categories (kept for backward compatibility, but low priority)
+        // These will be removed from UI in future versions
         val autoKeywords = listOf(
             "auto", "car", "vehicle", "tire", "tyre", "guma", "servis", "service",
             "oil", "ulje", "brake", "kočnica", "engine", "motor", "battery", "baterija",
@@ -109,7 +158,6 @@ class EntryClassifier {
             "osiguranje", "insurance", "mileage", "kilometraža", "fuel", "gorivo"
         )
         
-        // House keywords
         val houseKeywords = listOf(
             "house", "home", "kuća", "stan", "apartment", "filter", "broke", "broken",
             "fixed", "repair", "maintenance", "cleaned", "cleaning", "appliance", "uređaj",
@@ -117,7 +165,6 @@ class EntryClassifier {
             "heating", "grijanje", "cooling", "hladenje", "roof", "krov", "window", "prozor"
         )
         
-        // Finance keywords
         val financeKeywords = listOf(
             "bill", "račun", "invoice", "račun", "payment", "plaćanje", "cost", "trošak",
             "expense", "trošak", "money", "novac", "eur", "euro", "€", "kn", "kuna",
@@ -125,14 +172,12 @@ class EntryClassifier {
             "rent", "najam", "mortgage", "hipoteka", "loan", "kredit", "debt", "dug"
         )
         
-        // Work keywords
         val workKeywords = listOf(
             "work", "posao", "job", "meeting", "sastanak", "deadline", "rok", "project", "projekt",
             "client", "klijent", "colleague", "kolega", "boss", "šef", "office", "ured",
             "presentation", "prezentacija", "report", "izvještaj", "task", "zadatak"
         )
         
-        // Smart Home keywords
         val smartHomeKeywords = listOf(
             "svjetlo", "svjetla", "light", "lights", "upali", "ugasi", "turn on", "turn off",
             "rumbu", "usisavač", "vacuum", "robot", "robot usisavač", "robot vacuum",
@@ -145,7 +190,6 @@ class EntryClassifier {
             "grijanje u autu", "car heating", "upali grijanje", "turn on heating"
         )
         
-        // Shopping keywords
         val shoppingKeywords = listOf(
             "shopping", "kupovina", "grocery", "namirnice",
             "store", "trgovina", "shop", "dućan",
@@ -154,31 +198,31 @@ class EntryClassifier {
             "psi", "pse", "psa", "hrana za pse", "krokice", "cigare", "salame"
         )
         
-        // Home keywords (legacy, keeping for backward compatibility)
-        val homeKeywords = listOf(
-            "filter", "broke", "broken", "fixed", "repair", "maintenance",
-            "cleaned", "cleaning", "house", "home", "filter", "appliance",
-            "kuća", "pokvario", "popravio", "filter"
-        )
-        
         when {
-            // Priority order matters - more specific first
-            // HEURISTIKA PRVO - prije keyword matchinga!
-            // Ako izgleda kao shopping lista, to je prioritet (bez obzira na "rok", "mlijeko", itd.)
-            looksLikeShoppingList(text) -> return Category.SHOPPING
-            smartHomeKeywords.any { text.contains(it) } -> return Category.SMART_HOME
-            autoKeywords.any { text.contains(it) } -> return Category.AUTO
-            financeKeywords.any { text.contains(it) } -> return Category.FINANCE
-            houseKeywords.any { text.contains(it) } -> return Category.HOUSE
-            // Shopping keywords PRIJE workKeywords - "treba kupiti" je shopping, ne work!
-            shoppingKeywords.any { text.contains(it) } -> return Category.SHOPPING
-            workKeywords.any { text.contains(it) } -> return Category.WORK
+            // Parent OS Core Categories - HIGHEST PRIORITY
+            medicineKeywords.any { text.contains(it) } -> return Category.MEDICINE
+            vaccinationKeywords.any { text.contains(it) } -> return Category.VACCINATION
+            symptomKeywords.any { text.contains(it) } -> return Category.SYMPTOM
+            dayKeywords.any { text.contains(it) } -> return Category.DAY
+            
+            // Parent OS Health & Wellness Categories
             feedingKeywords.any { text.contains(it) } -> return Category.FEEDING
             healthKeywords.any { text.contains(it) } -> return Category.HEALTH
             sleepKeywords.any { text.contains(it) } -> return Category.SLEEP
             moodKeywords.any { text.contains(it) } -> return Category.MOOD
             developmentKeywords.any { text.contains(it) } -> return Category.DEVELOPMENT
             schoolKeywords.any { text.contains(it) } -> return Category.SCHOOL
+            
+            // Legacy categories (low priority, kept for backward compatibility)
+            // These will be removed from UI in future versions
+            looksLikeShoppingList(text) -> return Category.SHOPPING
+            smartHomeKeywords.any { text.contains(it) } -> return Category.SMART_HOME
+            autoKeywords.any { text.contains(it) } -> return Category.AUTO
+            financeKeywords.any { text.contains(it) } -> return Category.FINANCE
+            houseKeywords.any { text.contains(it) } -> return Category.HOUSE
+            shoppingKeywords.any { text.contains(it) } -> return Category.SHOPPING
+            workKeywords.any { text.contains(it) } -> return Category.WORK
+            
             else -> return Category.OTHER
         }
     }

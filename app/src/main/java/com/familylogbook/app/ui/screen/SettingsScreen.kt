@@ -19,14 +19,19 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material3.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,8 +47,10 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.familylogbook.app.data.auth.AuthManager
-import com.familylogbook.app.data.smarthome.SmartHomeManager
+// SmartHomeManager import removed - no longer needed for Parent OS
 import com.familylogbook.app.domain.model.Child
+import com.familylogbook.app.ui.util.DateFormatter
+import com.familylogbook.app.ui.util.DateVisualTransformation
 import com.familylogbook.app.domain.model.Person
 import com.familylogbook.app.domain.model.Entity
 import com.familylogbook.app.domain.model.PersonType
@@ -61,14 +68,27 @@ fun SettingsScreen(
 ) {
     val scope = rememberCoroutineScope()
     
+    // Force recomposition when returning from LoginScreen
+    // This ensures AccountInfoCard refreshes auth status
+    var refreshKey by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        // Refresh when screen is displayed
+        refreshKey++
+    }
+    
     // Dialogs state
     var showSignOutDialog by remember { mutableStateOf(false) }
     var showDeleteAccountDialog by remember { mutableStateOf(false) }
     var showDeleteAccountConfirmDialog by remember { mutableStateOf(false) }
     var showChangePasswordDialog by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var successMessage by remember { mutableStateOf<String?>(null) }
-    var isLoading by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) } // Local loading state for auth operations
+    val viewModelSuccessMessage by viewModel.successMessage.collectAsState()
+    val viewModelIsLoading by viewModel.isLoading.collectAsState()
+    var localSuccessMessage by remember { mutableStateOf<String?>(null) }
+    
+    // Combine ViewModel success message with local success message
+    val successMessage = viewModelSuccessMessage ?: localSuccessMessage
     
     // Change password state
     var currentPassword by remember { mutableStateOf("") }
@@ -90,11 +110,14 @@ fun SettingsScreen(
         }
         
         // Account Section
-        item {
+        item(key = refreshKey) {
             authManager?.let { auth ->
                 AccountInfoCard(
                     authManager = auth,
-                    onUpgradeClick = onNavigateToLogin,
+                    onUpgradeClick = {
+                        refreshKey++ // Force refresh after returning from login
+                        onNavigateToLogin()
+                    },
                     onSignOut = { showSignOutDialog = true },
                     onDeleteAccount = { showDeleteAccountDialog = true },
                     onChangePassword = { showChangePasswordDialog = true }
@@ -109,6 +132,9 @@ fun SettingsScreen(
             FamilySection(
                 viewModel = viewModel,
                 scope = scope,
+                errorMessage = errorMessage,
+                onErrorMessageChange = { errorMessage = it },
+                viewModelIsLoading = viewModelIsLoading,
                 onEntityQuickAction = { entity, category ->
                     onNavigateToAddEntryForEntity(entity.id, category)
                 }
@@ -398,7 +424,7 @@ fun SettingsScreen(
                                 newPassword = ""
                                 confirmNewPassword = ""
                                 // Show success message
-                                successMessage = "Lozinka je uspješno promijenjena!"
+                                localSuccessMessage = "Lozinka je uspješno promijenjena!"
                             } catch (e: Exception) {
                                 errorMessage = com.familylogbook.app.ui.util.ErrorHandler.getFriendlyErrorMessage(e)
                             } finally {
@@ -447,18 +473,24 @@ fun SettingsScreen(
         }
     }
     
-    // Success message
+    // Success message from ViewModel or local
     successMessage?.let { message ->
         LaunchedEffect(message) {
-            kotlinx.coroutines.delay(5000)
-            successMessage = null
+            kotlinx.coroutines.delay(3000)
+            if (viewModelSuccessMessage == null) {
+                localSuccessMessage = null
+            }
+            viewModel.clearSuccessMessage()
         }
         Snackbar(
             modifier = Modifier.padding(16.dp),
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
             action = {
-                TextButton(onClick = { successMessage = null }) {
+                TextButton(onClick = { 
+                    localSuccessMessage = null
+                    viewModel.clearSuccessMessage()
+                }) {
                     Text("U redu")
                 }
             }
@@ -532,6 +564,9 @@ fun ChildListItem(
 fun FamilySection(
     viewModel: SettingsViewModel,
     scope: CoroutineScope,
+    errorMessage: String?,
+    onErrorMessageChange: (String?) -> Unit,
+    viewModelIsLoading: Boolean,
     onEntityQuickAction: (Entity, com.familylogbook.app.domain.model.Category) -> Unit = { _, _ -> }
 ) {
     val persons by viewModel.persons.collectAsState()
@@ -599,17 +634,53 @@ fun FamilySection(
                     
                     // Person type selector
                     Text("Tip", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        listOf(PersonType.PARENT, PersonType.CHILD, PersonType.OTHER_FAMILY_MEMBER, PersonType.PET).forEach { type ->
-                            FilterChip(
-                                selected = newPersonType == type,
-                                onClick = { viewModel.setNewPersonType(type) },
-                                label = { Text(type.name.replace("_", " "), fontSize = 11.sp) },
-                                modifier = Modifier.weight(1f)
-                            )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            listOf(PersonType.PARENT, PersonType.CHILD).forEach { type ->
+                                FilterChip(
+                                    selected = newPersonType == type,
+                                    onClick = { viewModel.setNewPersonType(type) },
+                                    label = { 
+                                        Text(
+                                            when (type) {
+                                                PersonType.PARENT -> "Roditelj"
+                                                PersonType.CHILD -> "Dijete"
+                                                else -> type.name
+                                            },
+                                            fontSize = 13.sp
+                                        ) 
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            listOf(PersonType.OTHER_FAMILY_MEMBER, PersonType.PET).forEach { type ->
+                                FilterChip(
+                                    selected = newPersonType == type,
+                                    onClick = { viewModel.setNewPersonType(type) },
+                                    label = { 
+                                        Text(
+                                            when (type) {
+                                                PersonType.OTHER_FAMILY_MEMBER -> "Ostali članovi"
+                                                PersonType.PET -> "Kućni ljubimac"
+                                                else -> type.name
+                                            },
+                                            fontSize = 13.sp
+                                        ) 
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
                         }
                     }
                     
@@ -651,33 +722,152 @@ fun FamilySection(
                     if (newPersonType == PersonType.CHILD) {
                         var showDatePicker by remember { mutableStateOf(false) }
                         
-                        Text("Datum rođenja *", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.primary)
-                        Text("Obavezno za djecu (za hranjenje, cjepiva, obaveze)", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
-                        Row(
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        // Professional date picker section
+                        Card(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                            ),
+                            shape = RoundedCornerShape(12.dp)
                         ) {
-                            OutlinedTextField(
-                                value = if (newPersonDateOfBirth != null) {
-                                    java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.getDefault())
-                                        .format(java.util.Date(newPersonDateOfBirth!!))
-                                } else "",
-                                onValueChange = { },
-                                readOnly = true,
-                                modifier = Modifier.weight(1f),
-                                label = { Text("Datum rođenja") },
-                                placeholder = { Text("dd.MM.yyyy") },
-                                trailingIcon = {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                // Label and hint
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.CalendarToday,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        text = "Datum rođenja *",
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                
+                                Text(
+                                    text = "Koristi se za cjepiva i zdravstveni sažetak",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                    modifier = Modifier.padding(start = 26.dp)
+                                )
+                                
+                                // Date input field with manual entry and validation
+                                // "Digits as truth" pattern - only store raw digits (ddMMyyyy)
+                                var dobDigits by remember { mutableStateOf("") }
+                                var dateError by remember { mutableStateOf<String?>(null) }
+                                
+                                // Update dobDigits when newPersonDateOfBirth changes externally
+                                LaunchedEffect(newPersonDateOfBirth) {
                                     if (newPersonDateOfBirth != null) {
-                                        IconButton(onClick = { viewModel.setNewPersonDateOfBirth(null) }) {
-                                            Icon(Icons.Default.Delete, contentDescription = "Obriši datum")
-                                        }
+                                        dobDigits = DateFormatter.timestampToDigits(newPersonDateOfBirth!!)
+                                    } else {
+                                        dobDigits = ""
                                     }
                                 }
-                            )
-                            Button(onClick = { showDatePicker = true }) {
-                                Text("Odaberi", fontSize = 12.sp)
+                                
+                                OutlinedTextField(
+                                    value = dobDigits, // Store only digits as value
+                                    onValueChange = { newText ->
+                                        // Always extract only digits from input - this is the only truth
+                                        dobDigits = newText.filter { it.isDigit() }.take(8)
+                                        
+                                        // Validate and parse date only if we have 8 digits (full date)
+                                        if (dobDigits.length == 8) {
+                                            val formatted = DateFormatter.formatDobDigits(dobDigits) // dd.MM.yyyy
+                                            val parsedDate = parseDateForPerson(formatted)
+                                            if (parsedDate != null) {
+                                                dateError = null
+                                                viewModel.setNewPersonDateOfBirth(parsedDate)
+                                            } else {
+                                                dateError = "Neispravan format datuma"
+                                            }
+                                        } else {
+                                            // Clear error while typing
+                                            dateError = null
+                                            // Clear date if user is deleting
+                                            viewModel.setNewPersonDateOfBirth(null)
+                                        }
+                                    },
+                                    visualTransformation = DateVisualTransformation(), // Format visually
+                                    modifier = Modifier.fillMaxWidth(),
+                                    label = { Text("Unesi datum") },
+                                    placeholder = { Text("dd.MM.yyyy") },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.Event,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(22.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    },
+                                    trailingIcon = {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (dobDigits.isNotEmpty()) {
+                                                IconButton(
+                                                    onClick = {
+                                                        dobDigits = ""
+                                                        dateError = null
+                                                        viewModel.setNewPersonDateOfBirth(null)
+                                                    },
+                                                    modifier = Modifier.size(40.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.Close,
+                                                        contentDescription = "Obriši datum",
+                                                        modifier = Modifier.size(18.dp),
+                                                        tint = MaterialTheme.colorScheme.error
+                                                    )
+                                                }
+                                            }
+                                            // Optional: Calendar button to open date picker
+                                            IconButton(
+                                                onClick = { showDatePicker = true },
+                                                modifier = Modifier.size(40.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.CalendarToday,
+                                                    contentDescription = "Odaberi iz kalendara",
+                                                    modifier = Modifier.size(20.dp),
+                                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                                                )
+                                            }
+                                        }
+                                    },
+                                    isError = dateError != null,
+                                    supportingText = {
+                                        if (dateError != null) {
+                                            Text(dateError!!, color = MaterialTheme.colorScheme.error)
+                                        } else {
+                                            Text("Format: dd.MM.yyyy (npr. 15.03.2020)")
+                                        }
+                                    },
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                                        errorBorderColor = MaterialTheme.colorScheme.error
+                                    ),
+                                    shape = RoundedCornerShape(12.dp),
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Number
+                                    )
+                                )
                             }
                         }
                         
@@ -698,14 +888,21 @@ fun FamilySection(
                             scope.launch {
                                 if (viewModel.addPerson()) {
                                     showAddPerson = false
+                                } else {
+                                    onErrorMessageChange("Greška pri dodavanju osobe. Provjeri da li su sva polja ispravno unesena.")
                                 }
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = newPersonName.trim().isNotEmpty() && 
+                        enabled = !viewModelIsLoading && 
+                                  newPersonName.trim().isNotEmpty() && 
                                   (newPersonType != PersonType.CHILD || newPersonDateOfBirth != null)
                     ) {
-                        Text("Dodaj osobu")
+                        if (viewModelIsLoading) {
+                            com.familylogbook.app.ui.component.InlineLoadingIndicator()
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Text(if (viewModelIsLoading) "Spremanje..." else "Dodaj osobu")
                     }
                 }
             }
@@ -868,13 +1065,19 @@ fun FamilySection(
                             scope.launch {
                                 if (viewModel.addEntity()) {
                                     showAddEntity = false
+                                } else {
+                                    onErrorMessageChange("Greška pri dodavanju entiteta. Provjeri da li je ime uneseno.")
                                 }
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = newEntityName.trim().isNotEmpty()
+                        enabled = !viewModelIsLoading && newEntityName.trim().isNotEmpty()
                     ) {
-                        Text("Dodaj entitet")
+                        if (viewModelIsLoading) {
+                            com.familylogbook.app.ui.component.InlineLoadingIndicator()
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Text(if (viewModelIsLoading) "Spremanje..." else "Dodaj entitet")
                     }
                 }
             }
@@ -1251,69 +1454,7 @@ fun AppSettingsSection() {
             }
         }
         
-        // Smart Home Integration
-        val smartHomeContext = LocalContext.current
-        val smartHomeManager = remember(smartHomeContext) { SmartHomeManager(smartHomeContext) }
-        
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            )
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = "💡 Smart Home integracija",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                
-                Text(
-                    text = "Poveži se s Google Home app za direktnu kontrolu pametnih uređaja.",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-                
-                Button(
-                    onClick = {
-                        val opened = smartHomeManager.openGoogleHomeApp()
-                        if (!opened) {
-                            // Fallback – ako ne uspije, otvori Play Store
-                            try {
-                                val intent = Intent(Intent.ACTION_VIEW).apply {
-                                    data = Uri.parse("market://details?id=com.google.android.apps.chromecast.app")
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                }
-                                context.startActivity(intent)
-                            } catch (e: Exception) {
-                                // Fallback to browser if Play Store app not available
-                                try {
-                                    val intent = Intent(Intent.ACTION_VIEW).apply {
-                                        data = Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.apps.chromecast.app")
-                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                    }
-                                    context.startActivity(intent)
-                                } catch (e2: Exception) {
-                                    Toast.makeText(
-                                        context,
-                                        "Ne mogu otvoriti Google Home ni Play Store.",
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                }
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("🏠 Otvori Google Home")
-                }
-            }
-        }
+        // Smart Home Integration removed - no longer needed for Parent OS
         
         // Language (placeholder)
         Card(
@@ -1663,3 +1804,45 @@ fun PersonDatePickerDialog(
     }
 }
 
+/**
+ * Parses date string (dd.MM.yyyy) and validates it
+ * Returns timestamp in milliseconds if valid, null otherwise
+ */
+private fun parseDateForPerson(dateString: String): Long? {
+    if (dateString.length < 10) return null // Need full format: dd.MM.yyyy
+    
+    try {
+        val parts = dateString.split(".")
+        if (parts.size != 3) return null
+        
+        val day = parts[0].toIntOrNull() ?: return null
+        val month = parts[1].toIntOrNull() ?: return null
+        val year = parts[2].toIntOrNull() ?: return null
+        
+        // Validate ranges
+        if (day < 1 || day > 31) return null
+        if (month < 1 || month > 12) return null
+        if (year < 1900 || year > java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)) return null
+        
+        // Validate actual date (e.g., 31.02.2020 is invalid)
+        val calendar = java.util.Calendar.getInstance()
+        calendar.set(java.util.Calendar.YEAR, year)
+        calendar.set(java.util.Calendar.MONTH, month - 1) // Calendar months are 0-based
+        calendar.set(java.util.Calendar.DAY_OF_MONTH, day)
+        calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
+        calendar.set(java.util.Calendar.MINUTE, 0)
+        calendar.set(java.util.Calendar.SECOND, 0)
+        calendar.set(java.util.Calendar.MILLISECOND, 0)
+        
+        // Check if date was adjusted (invalid date like 31.02 would be adjusted)
+        if (calendar.get(java.util.Calendar.DAY_OF_MONTH) != day ||
+            calendar.get(java.util.Calendar.MONTH) != month - 1 ||
+            calendar.get(java.util.Calendar.YEAR) != year) {
+            return null
+        }
+        
+        return calendar.timeInMillis
+    } catch (e: Exception) {
+        return null
+    }
+}

@@ -40,7 +40,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.familylogbook.app.domain.model.Category
-import com.familylogbook.app.ui.component.ShoppingListCard
 import com.familylogbook.app.ui.viewmodel.HomeViewModel
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -69,7 +68,7 @@ fun EntryDetailScreen(
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("Zapis nije pronađen") },
+                    title = { Text("Zdravstveni zapis nije pronađen") },
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
                             Icon(Icons.Default.ArrowBack, contentDescription = "Natrag")
@@ -84,7 +83,7 @@ fun EntryDetailScreen(
                     .padding(paddingValues),
                 contentAlignment = Alignment.Center
             ) {
-                Text("Zapis nije pronađen")
+                Text("Zdravstveni zapis nije pronađen")
             }
         }
         return
@@ -96,7 +95,7 @@ fun EntryDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Detalji zapisa") },
+                title = { Text("Detalji zdravstvenog zapisa") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Natrag")
@@ -227,17 +226,48 @@ fun EntryDetailScreen(
                         )
                     }
                 }
-                Category.SHOPPING -> {
-                    entry.shoppingItems?.takeIf { it.isNotEmpty() }?.let { items ->
-                        Spacer(modifier = Modifier.height(8.dp))
-                        ShoppingListCard(
-                            items = items,
-                            checkedItems = entry.checkedShoppingItems ?: emptySet(),
-                            onItemChecked = { item, isChecked ->
-                                scope.launch {
-                                    viewModel.updateShoppingItemChecked(entry.id, item, isChecked)
-                                }
-                            }
+                Category.MEDICINE -> {
+                    entry.medicineGiven?.let { InfoCard("Lijek", it) }
+                    entry.medicineDosage?.let { InfoCard("Doza", it) }
+                    entry.medicineIntervalHours?.let { InfoCard("Interval", "${it} sati") }
+                    entry.nextMedicineTime?.let {
+                        InfoCard(
+                            "Sljedeća doza",
+                            SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(it))
+                        )
+                    }
+                }
+                Category.SYMPTOM -> {
+                    entry.temperature?.let { InfoCard("Temperatura", "${it}°C") }
+                    entry.symptoms?.takeIf { it.isNotEmpty() }?.let {
+                        InfoCard("Simptomi", it.joinToString(", "))
+                    }
+                }
+                Category.VACCINATION -> {
+                    entry.vaccinationName?.let { InfoCard("Cjepivo", it) }
+                    entry.vaccinationDate?.let { date ->
+                        InfoCard(
+                            "Datum",
+                            SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date(date))
+                        )
+                    }
+                }
+                Category.DAY -> {
+                    entry.dayEntryType?.let { type ->
+                        val typeName = when (type) {
+                            com.familylogbook.app.domain.model.DayEntryType.TODAY -> "Dnevni zapis"
+                            com.familylogbook.app.domain.model.DayEntryType.CHECKLIST -> "Checklist"
+                            com.familylogbook.app.domain.model.DayEntryType.REMINDER -> "Podsjetnik"
+                        }
+                        InfoCard("Tip", typeName)
+                    }
+                    entry.isCompleted?.let { completed ->
+                        InfoCard("Završeno", if (completed) "Da" else "Ne")
+                    }
+                    entry.dueDate?.let { date ->
+                        InfoCard(
+                            "Rok",
+                            SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date(date))
                         )
                     }
                 }
@@ -251,7 +281,7 @@ fun EntryDetailScreen(
             ) {
                 Icon(Icons.Default.Edit, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Uredi zapis")
+                Text("Uredi zdravstveni zapis")
             }
         }
     }

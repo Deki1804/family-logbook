@@ -3,19 +3,26 @@ package com.familylogbook.app.ui.screen
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -31,6 +38,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
 import com.familylogbook.app.domain.model.Child
 import com.familylogbook.app.domain.model.Person
 import com.familylogbook.app.domain.model.Entity
@@ -41,6 +51,7 @@ import com.familylogbook.app.domain.util.PersonAgeUtils.calculateAgeInYears
 import com.familylogbook.app.domain.util.PersonAgeUtils.isBabyAge
 import com.familylogbook.app.domain.util.PersonAgeUtils.canHaveFeeding
 import com.familylogbook.app.domain.timer.TimerManager
+import com.familylogbook.app.ui.component.MedicineQuickForm
 import kotlinx.coroutines.launch
 
 @Composable
@@ -80,6 +91,11 @@ fun AddEntryScreen(
     var temperatureValue by remember { mutableStateOf("") }
     var amountValue by remember { mutableStateOf("") }
     var currencyValue by remember { mutableStateOf("EUR") }
+    
+    // Medicine quick form state
+    var medicineName by remember { mutableStateOf("") }
+    var medicineDosage by remember { mutableStateOf("") }
+    var medicineIntervalHours by remember { mutableStateOf(6) }
     val isFeedingActive by viewModel.isFeedingActive.collectAsState()
     val feedingElapsedSeconds by viewModel.feedingElapsedSeconds.collectAsState()
     val selectedFeedingType by viewModel.selectedFeedingType.collectAsState()
@@ -103,7 +119,14 @@ fun AddEntryScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (isEditMode) "Uredi zapis" else "Dodaj zapis") },
+                title = { 
+                    Text(
+                        text = if (isEditMode) "Uredi zdravstveni zapis" else "Zabilježi zdravstveni događaj",
+                        maxLines = 2,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                },
+                windowInsets = WindowInsets.statusBars,
                 navigationIcon = {
                     TextButton(onClick = onNavigateBack) {
                         Text("Odustani")
@@ -132,8 +155,20 @@ fun AddEntryScreen(
                                     )
                                 }
 
-                                if (viewModel.saveEntry()) {
+                                val success = viewModel.saveEntry()
+                                if (success) {
+                                    snackbarHostState.showSnackbar(
+                                        message = "✅ Zdravstveni zapis uspješno spremljen!",
+                                        duration = SnackbarDuration.Short
+                                    )
+                                    kotlinx.coroutines.delay(500) // Small delay to show success message
                                     onNavigateBack()
+                                } else {
+                                    // Error message is already shown in error card
+                                    snackbarHostState.showSnackbar(
+                                        message = "❌ Greška pri spremanju. Provjeri poruku iznad.",
+                                        duration = SnackbarDuration.Long
+                                    )
                                 }
                             }
                         },
@@ -157,11 +192,14 @@ fun AddEntryScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            val scrollState = rememberScrollState()
+            
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(16.dp)
-                    .verticalScroll(rememberScrollState()),
+                    .imePadding() // Add padding for keyboard - prevents content from being hidden
+                    .verticalScroll(scrollState),
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
                 // Quick Feeding Tracker - show ONLY if there are CHILD persons who can have feeding (< 2 years)
@@ -225,35 +263,41 @@ fun AddEntryScreen(
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                         modifier = Modifier.padding(top = 8.dp)
                     )
-                    Row(
+                    LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         // Family option
-                        PersonChip(
-                            label = "Obitelj",
-                            isSelected = selectedPersonId == null && selectedEntityId == null && selectedChildId == null,
-                            onClick = {
-                                viewModel.setSelectedPerson(null)
-                                viewModel.setSelectedEntity(null)
-                                viewModel.setSelectedChild(null)
-                            },
-                            modifier = Modifier.weight(1f)
-                        )
+                        item {
+                            PersonChip(
+                                label = "Obitelj",
+                                isSelected = selectedPersonId == null && selectedEntityId == null && selectedChildId == null,
+                                onClick = {
+                                    android.util.Log.d("AddEntryScreen", "Family clicked - clearing selection")
+                                    viewModel.setSelectedPerson(null)
+                                    viewModel.setSelectedEntity(null)
+                                    viewModel.setSelectedChild(null)
+                                },
+                                modifier = Modifier.widthIn(min = 100.dp)
+                            )
+                        }
 
                         // Persons chips
-                        persons.forEach { person ->
+                        items(persons.size) { index ->
+                            val person = persons[index]
                             PersonChip(
                                 label = person.name,
                                 emoji = person.emoji,
                                 color = Color(android.graphics.Color.parseColor(person.avatarColor)),
                                 isSelected = selectedPersonId == person.id,
                                 onClick = {
+                                    android.util.Log.d("AddEntryScreen", "Person clicked: ${person.name}, id: ${person.id}")
                                     viewModel.setSelectedPerson(person.id)
                                     viewModel.setSelectedEntity(null)
                                     viewModel.setSelectedChild(null)
+                                    android.util.Log.d("AddEntryScreen", "After click - selectedPersonId should be: ${person.id}")
                                 },
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.widthIn(min = 100.dp)
                             )
                         }
                     }
@@ -344,7 +388,7 @@ fun AddEntryScreen(
                     Divider()
                 }
 
-                // Smart Home Preset Block (shown when entry text suggests smart home or category is SMART_HOME)
+                // Category detection for quick inputs
                 val detectedCategory = remember(entryText) {
                     if (entryText.isNotEmpty()) {
                         try {
@@ -357,29 +401,11 @@ fun AddEntryScreen(
                     } else null
                 }
 
-                if (detectedCategory == Category.SMART_HOME || selectedQuickCategory == Category.SMART_HOME) {
-                    SmartHomePresetBlock(
-                        onCommandSelected = { command ->
-                            // Ako korisnik već počeo pisati (npr. "upali"), a predložak već sadrži taj tekst (npr. "upali klimu"),
-                            // zamijeni postojeći tekst umjesto da ga dodaješ
-                            val currentText = entryText.trim().lowercase()
-                            val commandLower = command.lowercase()
+                // Smart Home preset block removed - no longer needed for Parent OS
 
-                            // Provjeri da li predložak već sadrži tekst koji je korisnik napisao
-                            if (currentText.isNotEmpty() && commandLower.startsWith(currentText)) {
-                                // Predložak već sadrži tekst koji je korisnik napisao, samo zamijeni
-                                viewModel.setEntryText(command)
-                            } else {
-                                // Predložak ne sadrži tekst koji je korisnik napisao, dodaj ga
-                                viewModel.setEntryText(if (entryText.isNotEmpty()) "$entryText $command" else command)
-                            }
-                        }
-                    )
-                    Divider()
-                }
-
-                // Symptom Helper (shown when category is HEALTH)
-                if (detectedCategory == Category.HEALTH || selectedQuickCategory == Category.HEALTH) {
+                // Symptom Helper (shown when category is HEALTH or SYMPTOM) - Parent OS core feature
+                if (detectedCategory == Category.HEALTH || detectedCategory == Category.SYMPTOM ||
+                    selectedQuickCategory == Category.HEALTH || selectedQuickCategory == Category.SYMPTOM) {
                     SymptomCheckboxSection(
                         selectedSymptoms = selectedSymptoms,
                         onSymptomsChange = { viewModel.setSymptoms(it) }
@@ -415,6 +441,17 @@ fun AddEntryScreen(
                         onAmountChange = { amountValue = it },
                         currencyValue = currencyValue,
                         onCurrencyChange = { currencyValue = it },
+                        medicineName = medicineName,
+                        onMedicineNameChange = { medicineName = it },
+                        medicineDosage = medicineDosage,
+                        onMedicineDosageChange = { medicineDosage = it },
+                        medicineIntervalHours = medicineIntervalHours,
+                        onMedicineIntervalChange = { medicineIntervalHours = it },
+                        selectedPersonId = selectedPersonId,
+                        entryText = entryText,
+                        viewModel = viewModel,
+                        scope = scope,
+                        onNavigateBack = onNavigateBack,
                         onAddToText = { text ->
                             viewModel.setEntryText(entryText + (if (entryText.isNotEmpty()) " " else "") + text)
                         }
@@ -428,35 +465,36 @@ fun AddEntryScreen(
                     fontWeight = FontWeight.Medium
                 )
 
+                // Text field with focus tracking for auto-scroll
+                var textFieldFocused by remember { mutableStateOf(false) }
+                
                 OutlinedTextField(
                     value = entryText,
                     onValueChange = { viewModel.setEntryText(it) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(200.dp),
+                        .heightIn(min = 120.dp, max = 300.dp)
+                        .onFocusChanged { focusState ->
+                            textFieldFocused = focusState.isFocused
+                            // Auto-scroll to text field when focused
+                            if (focusState.isFocused) {
+                                scope.launch {
+                                    kotlinx.coroutines.delay(100) // Small delay for keyboard animation
+                                    scrollState.animateScrollTo(scrollState.maxValue)
+                                }
+                            }
+                        },
                     placeholder = {
                         Text(
-                            when {
-                                detectedCategory == Category.SMART_HOME || selectedQuickCategory == Category.SMART_HOME ->
-                                    "Npr. 'Upali svjetla u dnevnom boravku' ili 'Postavi termostat na 22 stupnja'"
-
-                                else ->
-                                    "Npr. Neo je imao blagu temperaturu večeras. Dao sam mu lijek."
-                            }
+                            "Npr. Neo je imao blagu temperaturu večeras. Dao sam mu lijek."
                         )
                     },
                     minLines = 5,
-                    maxLines = 10
+                    maxLines = 15
                 )
 
                 Text(
-                    text = when {
-                        detectedCategory == Category.SMART_HOME || selectedQuickCategory == Category.SMART_HOME ->
-                            "Komanda će biti poslana Google Assistantu. Koristi jasne naredbe poput 'Upali svjetla', 'Postavi temperaturu na X stupnjeva', itd."
-
-                        else ->
-                            "Aplikacija će automatski kategorizirati tvoj zapis i dodati relevantne oznake."
-                    },
+                    text = "Aplikacija će automatski kategorizirati tvoj zdravstveni zapis i dodati relevantne oznake.",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
@@ -504,39 +542,65 @@ fun AddEntryScreen(
                                 ) {
                                     Text("U redu")
                                 }
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Button(
-                                    onClick = {
-                                        scope.launch {
-                                            viewModel.clearError()
+                                // Show retry button only for network errors
+                                val isNetworkError = error.contains("mrež", ignoreCase = true) || 
+                                                     error.contains("internet", ignoreCase = true) ||
+                                                     error.contains("veza", ignoreCase = true) ||
+                                                     error.contains("timeout", ignoreCase = true)
+                                if (isNetworkError) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Button(
+                                        onClick = {
+                                            scope.launch {
+                                                viewModel.clearError()
 
-                                            val text = entryText.trim()
+                                                val text = entryText.trim()
 
-                                            // Check for timer command BEFORE saving entry
-                                            val timerCommand = TimerManager.detectTimerCommand(text)
-                                            if (timerCommand != null) {
-                                                // Start timer
-                                                val timerId =
-                                                    TimerManager.startTimer(context, timerCommand)
-                                                android.util.Log.d(
-                                                    "AddEntryScreen",
-                                                    "Timer started: ${timerCommand.durationMinutes} min, ID: $timerId"
-                                                )
-                                                
-                                                // Show success message
-                                                snackbarHostState.showSnackbar(
-                                                    message = "⏰ Timer pokrenut: ${timerCommand.durationMinutes} min",
-                                                    duration = SnackbarDuration.Short
-                                                )
+                                                // Check for timer command BEFORE saving entry
+                                                val timerCommand = TimerManager.detectTimerCommand(text)
+                                                if (timerCommand != null) {
+                                                    // Start timer
+                                                    val timerId =
+                                                        TimerManager.startTimer(context, timerCommand)
+                                                    android.util.Log.d(
+                                                        "AddEntryScreen",
+                                                        "Timer started: ${timerCommand.durationMinutes} min, ID: $timerId"
+                                                    )
+                                                    
+                                                    // Show success message
+                                                    snackbarHostState.showSnackbar(
+                                                        message = "⏰ Timer pokrenut: ${timerCommand.durationMinutes} min",
+                                                        duration = SnackbarDuration.Short
+                                                    )
+                                                }
+
+                                                val success = viewModel.saveEntry()
+                                                if (success) {
+                                                    snackbarHostState.showSnackbar(
+                                                        message = "✅ Zdravstveni zapis uspješno spremljen!",
+                                                        duration = SnackbarDuration.Short
+                                                    )
+                                                    kotlinx.coroutines.delay(500)
+                                                    onNavigateBack()
+                                                } else {
+                                                    snackbarHostState.showSnackbar(
+                                                        message = "❌ Greška pri spremanju. Provjeri poruku iznad.",
+                                                        duration = SnackbarDuration.Long
+                                                    )
+                                                }
                                             }
-
-                                            if (viewModel.saveEntry()) {
-                                                onNavigateBack()
-                                            }
+                                        },
+                                        enabled = !isLoading && entryText.trim().isNotEmpty()
+                                    ) {
+                                        if (isLoading) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(16.dp),
+                                                strokeWidth = 2.dp
+                                            )
+                                        } else {
+                                            Text("Pokušaj ponovo")
                                         }
                                     }
-                                ) {
-                                    Text("Pokušaj ponovo")
                                 }
                             }
                         }
@@ -740,7 +804,7 @@ fun ReminderDatePicker(
                     fontWeight = FontWeight.Medium
                 )
                 Text(
-                    text = "Upiši datum u tekst zapisa (npr. 'servis 15.12.2024', 'sutra', 'za 3 dana'). Aplikacija će automatski prepoznati datum i postaviti podsjetnik.",
+                    text = "Upiši datum u tekst zdravstvenog zapisa (npr. 'servis 15.12.2024', 'sutra', 'za 3 dana'). Aplikacija će automatski prepoznati datum i postaviti podsjetnik.",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
@@ -757,43 +821,42 @@ fun PersonChip(
         emoji: String? = null,
         color: Color = MaterialTheme.colorScheme.secondary
     ) {
-        Surface(
-            modifier = modifier
-                .height(48.dp)
-                .clickable(onClick = onClick),
-            shape = RoundedCornerShape(12.dp),
-            color = if (isSelected) {
-                color.copy(alpha = 0.3f)
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant
+        FilterChip(
+            selected = isSelected,
+            onClick = {
+                android.util.Log.d("PersonChip", "FilterChip clicked for: $label, isSelected: $isSelected")
+                try {
+                    onClick()
+                    android.util.Log.d("PersonChip", "onClick callback executed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PersonChip", "Error in onClick callback: ${e.message}", e)
+                }
             },
-            border = if (isSelected) {
-                BorderStroke(2.dp, color)
-            } else {
-                null
-            }
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                emoji?.let {
+            label = {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                ) {
+                    emoji?.let {
+                        Text(
+                            text = it,
+                            fontSize = 16.sp
+                        )
+                    }
                     Text(
-                        text = it,
-                        fontSize = 20.sp,
-                        modifier = Modifier.padding(end = 4.dp)
+                        text = label,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                 }
-                Text(
-                    text = label,
-                    fontSize = 14.sp,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                )
-            }
-        }
+            },
+            modifier = modifier.height(48.dp),
+            colors = FilterChipDefaults.filterChipColors(
+                selectedContainerColor = color.copy(alpha = 0.3f),
+                selectedLabelColor = MaterialTheme.colorScheme.onSurface
+            )
+        )
     }
 
 @Composable
@@ -902,6 +965,17 @@ fun QuickInputsSection(
         onAmountChange: (String) -> Unit,
         currencyValue: String,
         onCurrencyChange: (String) -> Unit,
+        medicineName: String,
+        onMedicineNameChange: (String) -> Unit,
+        medicineDosage: String,
+        onMedicineDosageChange: (String) -> Unit,
+        medicineIntervalHours: Int,
+        onMedicineIntervalChange: (Int) -> Unit,
+        selectedPersonId: String?,
+        entryText: String,
+        viewModel: AddEntryViewModel,
+        scope: kotlinx.coroutines.CoroutineScope,
+        onNavigateBack: () -> Unit,
         onAddToText: (String) -> Unit
     ) {
         Card(
@@ -934,12 +1008,13 @@ fun QuickInputsSection(
                 ) {
                     listOf(
                         Category.HEALTH,
-                        Category.AUTO,
-                        Category.HOUSE,
-                        Category.FINANCE,
-                        Category.WORK,
-                        Category.SHOPPING,
-                        Category.SMART_HOME
+                        Category.MEDICINE,
+                        Category.SYMPTOM,
+                        Category.VACCINATION,
+                        Category.FEEDING,
+                        Category.SLEEP,
+                        Category.DAY,
+                        Category.SCHOOL
                     ).forEach { category ->
                         FilterChip(
                             selected = selectedCategory == category,
@@ -954,9 +1029,13 @@ fun QuickInputsSection(
                                         Category.KINDERGARTEN_SCHOOL -> "Škola"
                                         Category.SCHOOL -> "Škola"
                                         Category.HOME -> "Dom"
-                                        Category.HOUSE -> "Kuća"
+                                        Category.MEDICINE -> "Lijekovi"
+                                        Category.SYMPTOM -> "Simptomi"
+                                        Category.VACCINATION -> "Cjepiva"
                                         Category.FEEDING -> "Hranjenje"
+                                        Category.DAY -> "Dan"
                                         Category.AUTO -> "Auto"
+                                        Category.HOUSE -> "Kuća"
                                         Category.FINANCE -> "Financije"
                                         Category.WORK -> "Posao"
                                         Category.SHOPPING -> "Kupovina"
@@ -971,8 +1050,41 @@ fun QuickInputsSection(
                     }
                 }
 
-                // Temperature input (for HEALTH)
-                if (selectedCategory == Category.HEALTH) {
+                // Medicine quick form (for MEDICINE category) - Parent OS core feature
+                if (selectedCategory == Category.MEDICINE) {
+                    MedicineQuickForm(
+                        medicineName = medicineName,
+                        onMedicineNameChange = onMedicineNameChange,
+                        medicineDosage = medicineDosage,
+                        onMedicineDosageChange = onMedicineDosageChange,
+                        medicineIntervalHours = medicineIntervalHours,
+                        onMedicineIntervalChange = onMedicineIntervalChange,
+                        onAddMedicine = {
+                            if (medicineName.isNotEmpty() && selectedPersonId != null) {
+                                // Save medicine entry using ViewModel
+                                scope.launch {
+                                    val saved = viewModel.saveMedicineEntry(
+                                        medicineName = medicineName,
+                                        dosage = medicineDosage.ifEmpty { "1 doza" },
+                                        intervalHours = medicineIntervalHours,
+                                        notes = entryText.ifEmpty { null }
+                                    )
+                                    if (saved) {
+                                        // Clear form
+                                        onMedicineNameChange("")
+                                        onMedicineDosageChange("")
+                                        onMedicineIntervalChange(6)
+                                        onNavigateBack()
+                                    }
+                                }
+                            }
+                        }
+                    )
+                    Divider()
+                }
+                
+                // Temperature input (for HEALTH or SYMPTOM) - Parent OS core feature
+                if (selectedCategory == Category.HEALTH || selectedCategory == Category.SYMPTOM) {
                     OutlinedTextField(
                         value = temperatureValue,
                         onValueChange = onTemperatureChange,
@@ -1088,12 +1200,12 @@ fun QuickInputsSection(
                             }
                         }
 
-                        Category.SHOPPING -> {
+                        Category.MEDICINE -> {
                             listOf(
-                                "Kupovina",
-                                "Namirnice",
-                                "Lista",
-                                "Treba kupiti"
+                                "Nurofen",
+                                "Paracetamol",
+                                "Lijek",
+                                "Doza"
                             ).forEach { phrase ->
                                 SuggestionChip(
                                     onClick = { onAddToText(phrase) },
@@ -1102,66 +1214,44 @@ fun QuickInputsSection(
                             }
                         }
 
-                        Category.SMART_HOME -> {
-                            // Smart Home preset komande
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    text = "Česte komande:",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        Category.SYMPTOM -> {
+                            listOf(
+                                "Temperatura",
+                                "Kašalj",
+                                "Povraćanje",
+                                "Simptomi"
+                            ).forEach { phrase ->
+                                SuggestionChip(
+                                    onClick = { onAddToText(phrase) },
+                                    label = { Text(phrase, fontSize = 12.sp) }
                                 )
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    listOf(
-                                        "Upali rumbu",
-                                        "Ugasi svjetlo",
-                                        "Upali svjetlo"
-                                    ).forEach { phrase ->
-                                        SuggestionChip(
-                                            onClick = { onAddToText(phrase) },
-                                            label = { Text(phrase, fontSize = 12.sp) },
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                    }
-                                }
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    listOf(
-                                        "Pusti uspavanku",
-                                        "Ugasi klimu",
-                                        "Upali TV"
-                                    ).forEach { phrase ->
-                                        SuggestionChip(
-                                            onClick = { onAddToText(phrase) },
-                                            label = { Text(phrase, fontSize = 12.sp) },
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                    }
-                                }
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    listOf(
-                                        "Zatvori rolete",
-                                        "Otvori rolete",
-                                        "Postavi termostat"
-                                    ).forEach { phrase ->
-                                        SuggestionChip(
-                                            onClick = { onAddToText(phrase) },
-                                            label = { Text(phrase, fontSize = 12.sp) },
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                    }
-                                }
+                            }
+                        }
+
+                        Category.VACCINATION -> {
+                            listOf(
+                                "Cjepivo",
+                                "Vakcina",
+                                "Cijepljenje"
+                            ).forEach { phrase ->
+                                SuggestionChip(
+                                    onClick = { onAddToText(phrase) },
+                                    label = { Text(phrase, fontSize = 12.sp) }
+                                )
+                            }
+                        }
+
+                        Category.DAY -> {
+                            listOf(
+                                "Checklist",
+                                "Rutina",
+                                "Podsjetnik",
+                                "Dnevna obaveza"
+                            ).forEach { phrase ->
+                                SuggestionChip(
+                                    onClick = { onAddToText(phrase) },
+                                    label = { Text(phrase, fontSize = 12.sp) }
+                                )
                             }
                         }
 
@@ -1267,134 +1357,4 @@ fun BabyPresetBlock(
         }
     }
 
-@Composable
-fun SmartHomePresetBlock(
-        onCommandSelected: (String) -> Unit
-    ) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)
-            )
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "🏠 Smart Home - Brze komande",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.tertiary
-                    )
-                }
-
-                Text(
-                    text = "Odaberi komandu za brzi unos:",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-
-                // Preset komande u grid layoutu
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Red 1: Rumba i svjetla
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        SmartHomePresetButton(
-                            text = "🤖 Upali rumbu",
-                            onClick = { onCommandSelected("Upali rumbu") },
-                            modifier = Modifier.weight(1f)
-                        )
-                        SmartHomePresetButton(
-                            text = "💡 Upali svjetlo",
-                            onClick = { onCommandSelected("Upali svjetlo") },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-
-                    // Red 2: Ugasi komande
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        SmartHomePresetButton(
-                            text = "💡 Ugasi svjetlo",
-                            onClick = { onCommandSelected("Ugasi svjetlo") },
-                            modifier = Modifier.weight(1f)
-                        )
-                        SmartHomePresetButton(
-                            text = "❄️ Ugasi klimu",
-                            onClick = { onCommandSelected("Ugasi klimu") },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-
-                    // Red 3: Muzika i TV
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        SmartHomePresetButton(
-                            text = "🎵 Pusti uspavanku",
-                            onClick = { onCommandSelected("Pusti uspavanku u dnevnom") },
-                            modifier = Modifier.weight(1f)
-                        )
-                        SmartHomePresetButton(
-                            text = "📺 Upali TV",
-                            onClick = { onCommandSelected("Upali TV") },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-
-                    // Red 4: Rolete i klima
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        SmartHomePresetButton(
-                            text = "🪟 Zatvori rolete",
-                            onClick = { onCommandSelected("Zatvori rolete") },
-                            modifier = Modifier.weight(1f)
-                        )
-                        SmartHomePresetButton(
-                            text = "🌡️ Postavi termostat",
-                            onClick = { onCommandSelected("Postavi termostat na 22 stupnjeva") },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-@Composable
-fun SmartHomePresetButton(
-        text: String,
-        onClick: () -> Unit,
-        modifier: Modifier = Modifier
-    ) {
-        OutlinedButton(
-            onClick = onClick,
-            modifier = modifier.height(48.dp),
-            colors = ButtonDefaults.outlinedButtonColors(
-                contentColor = MaterialTheme.colorScheme.tertiary
-            )
-        ) {
-            Text(
-                text = text,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
-            )
-        }
-    }
+// SmartHomePresetBlock and SmartHomePresetButton removed - no longer needed for Parent OS

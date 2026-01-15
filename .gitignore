@@ -1,3 +1,29 @@
+### Android / Gradle
+.gradle/
+**/build/
+**/.cxx/
+local.properties
+
+### Android Studio / IntelliJ
+.idea/
+*.iml
+
+### OS
+.DS_Store
+Thumbs.db
+
+### Firebase / Secrets
+app/google-services.json
+**/google-services.json
+*.jks
+*.keystore
+
+### Archives / exports
+*.zip
+
+### Cursor / tooling
+.cursor/
+
 # Built application files
 *.apk
 *.aar

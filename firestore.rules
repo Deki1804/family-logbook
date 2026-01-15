@@ -20,26 +20,22 @@ service cloud.firestore {
       // Persons subcollection: /users/{userId}/persons/{personId}
       match /persons/{personId} {
         allow read, write: if isOwner(userId);
-        allow list: if isOwner(userId);
       }
       
       // Entities subcollection: /users/{userId}/entities/{entityId}
       match /entities/{entityId} {
         allow read, write: if isOwner(userId);
-        allow list: if isOwner(userId);
       }
       
       // Entries subcollection: /users/{userId}/entries/{entryId}
       match /entries/{entryId} {
         allow read, write: if isOwner(userId);
-        allow list: if isOwner(userId);
       }
       
       // Legacy: Children subcollection (backward compatibility)
       // /users/{userId}/children/{childId}
       match /children/{childId} {
         allow read, write: if isOwner(userId);
-        allow list: if isOwner(userId);
       }
       
       // Catch-all for any other subcollections (future-proofing)

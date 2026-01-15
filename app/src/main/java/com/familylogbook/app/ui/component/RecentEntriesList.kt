@@ -35,7 +35,7 @@ fun RecentEntriesList(
         modifier = modifier.fillMaxWidth()
     ) {
         Text(
-            text = "📋 Zadnji zapisi",
+            text = "📋 Zadnji zdravstveni zapisi",
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary,
@@ -44,7 +44,7 @@ fun RecentEntriesList(
         
         if (entries.isEmpty()) {
             Text(
-                text = "Nema zapisa",
+                text = "Još nema zdravstvenih zapisa",
                 fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                 modifier = Modifier.padding(16.dp)
@@ -198,38 +198,72 @@ private fun RecentEntryItem(
 
 private fun getCategoryIcon(category: Category): String {
     return when (category) {
+        // Parent OS Core Categories
+        Category.MEDICINE -> "💊"
+        Category.SYMPTOM -> "🤒"
+        Category.VACCINATION -> "💉"
+        Category.DAY -> "📋"
+        
+        // Parent OS Health & Wellness
         Category.HEALTH -> "🏥"
         Category.FEEDING -> "🍼"
         Category.SLEEP -> "😴"
         Category.MOOD -> "😊"
+        Category.DEVELOPMENT -> "🌟"
+        Category.SCHOOL -> "🏫"
+        
+        // Legacy categories (kept for backward compatibility)
         Category.SHOPPING -> "🛒"
         Category.SMART_HOME -> "🏠"
         Category.AUTO -> "🚗"
         Category.HOUSE -> "🏡"
         Category.FINANCE -> "💰"
         Category.WORK -> "💼"
+        Category.KINDERGARTEN_SCHOOL -> "🏫"
+        Category.HOME -> "🏠"
         else -> "📝"
     }
 }
 
 private fun getCategoryColor(category: Category): Color {
     return when (category) {
+        // Parent OS Core Categories
+        Category.MEDICINE -> Color(0xFFE63946)
+        Category.SYMPTOM -> Color(0xFFFF6B6B)
+        Category.VACCINATION -> Color(0xFF4ECDC4)
+        Category.DAY -> Color(0xFF6C5CE7)
+        
+        // Parent OS Health & Wellness
         Category.HEALTH -> Color(0xFFFF6B6B)
         Category.FEEDING -> Color(0xFF4ECDC4)
         Category.SLEEP -> Color(0xFF95E1D3)
         Category.MOOD -> Color(0xFFFFD93D)
+        Category.DEVELOPMENT -> Color(0xFF95E1D3)
+        Category.SCHOOL -> Color(0xFFAA96DA)
+        
+        // Legacy categories (kept for backward compatibility)
         Category.SHOPPING -> Color(0xFFFF6B6B)
         Category.SMART_HOME -> Color(0xFF95E1D3)
         Category.AUTO -> Color(0xFFAA96DA)
         Category.HOUSE -> Color(0xFF95E1D3)
         Category.FINANCE -> Color(0xFFFF6B6B)
         Category.WORK -> Color(0xFFAA96DA)
+        Category.KINDERGARTEN_SCHOOL -> Color(0xFFAA96DA)
+        Category.HOME -> Color(0xFFF38181)
         else -> Color(0xFF95E1D3)
     }
 }
 
 private fun getEntryTitle(entry: LogEntry): String {
     return when (entry.category) {
+        Category.MEDICINE -> {
+            // Health Event format: "Nurofen zabilježen – 18:00"
+            val medicineName = entry.medicineGiven ?: "Lijek"
+            val timeFormat = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+            val timestamp = entry.medicineTimestamp ?: entry.timestamp
+            val timeText = timeFormat.format(java.util.Date(timestamp))
+            "$medicineName zabilježen – $timeText"
+        }
         Category.FEEDING -> {
             val amount = entry.feedingAmount?.let { "$it ml" } ?: ""
             "Hranjenje $amount".trim()
@@ -241,12 +275,38 @@ private fun getEntryTitle(entry: LogEntry): String {
         Category.HEALTH -> {
             entry.temperature?.let { "Temperatura: ${it}°C" } ?: "Zdravlje"
         }
+        Category.SYMPTOM -> {
+            entry.temperature?.let { "Temperatura: ${it}°C" } ?: 
+            entry.symptoms?.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "Simptomi"
+        }
+        Category.VACCINATION -> {
+            entry.vaccinationName ?: "Cjepivo"
+        }
         else -> entry.rawText.take(30) + if (entry.rawText.length > 30) "..." else ""
     }
 }
 
 private fun getEntryDescription(entry: LogEntry): String {
     return when {
+        entry.category == Category.MEDICINE -> {
+            // Show dosage if available, otherwise show person or time context
+            val dosage = entry.medicineDosage?.let { "Doza: $it" }
+            val person = entry.personId?.let { "Osoba: $it" } // Will be replaced with actual person name if available
+            val nextDose = entry.nextMedicineTime?.let {
+                val timeFormat = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                "Sljedeća doza: ${timeFormat.format(java.util.Date(it))}"
+            }
+            listOfNotNull(dosage, person, nextDose).take(2).joinToString(" • ") 
+                ?: "Zdravstveni zapis"
+        }
+        entry.category == Category.SYMPTOM -> {
+            entry.symptoms?.takeIf { it.isNotEmpty() }?.joinToString(", ") 
+                ?: entry.temperature?.let { "Temperatura: ${it}°C" }
+                ?: "Simptomi zabilježeni"
+        }
+        entry.category == Category.VACCINATION -> {
+            entry.vaccinationName?.let { "Cjepivo: $it" } ?: "Cjepivo zabilježeno"
+        }
         entry.category == Category.SHOPPING && !entry.shoppingItems.isNullOrEmpty() -> {
             entry.shoppingItems.take(3).joinToString(", ")
         }

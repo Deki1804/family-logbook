@@ -29,11 +29,14 @@ data class LogEntry(
     
     // Health tracking
     val temperature: Float? = null, // in Celsius
-    val medicineGiven: String? = null, // medicine name
-    val medicineTimestamp: Long? = null, // when medicine was given
-    val nextMedicineTime: Long? = null, // when next medicine dose should be taken (calculated from interval)
-    val medicineIntervalHours: Int? = null, // interval between medicine doses in hours
     val symptoms: List<String>? = null, // list of symptoms (e.g., "temperatura", "kašalj", "povraćanje")
+    
+    // Medicine tracking (Parent OS core feature)
+    val medicineGiven: String? = null, // medicine name (e.g., "Nurofen", "Paracetamol")
+    val medicineDosage: String? = null, // dosage amount (e.g., "5ml", "1 tableta", "10mg")
+    val medicineTimestamp: Long? = null, // when medicine was given (timestamp)
+    val nextMedicineTime: Long? = null, // when next medicine dose should be taken (calculated from interval)
+    val medicineIntervalHours: Int? = null, // interval between medicine doses in hours (e.g., 6, 8, 12)
     
     // Finance tracking
     val amount: Double? = null, // for finance entries
@@ -49,8 +52,14 @@ data class LogEntry(
     
     // Vaccination tracking
     val vaccinationName: String? = null, // vaccination name (e.g., "MMR", "DTP-Hib-IPV")
+    val vaccinationDate: Long? = null, // date when vaccination was given
     val nextVaccinationDate: Long? = null, // recommended date for next vaccination
-    val nextVaccinationMessage: String? = null // message about next vaccination
+    val nextVaccinationMessage: String? = null, // message about next vaccination
+    
+    // Day tracking (Parent OS core feature)
+    val dayEntryType: DayEntryType? = null, // TODAY, CHECKLIST, REMINDER
+    val isCompleted: Boolean? = null, // for checklist items
+    val dueDate: Long? = null // for reminders (same as reminderDate, but more explicit for DAY category)
 )
 
 enum class FeedingType {
@@ -59,3 +68,8 @@ enum class FeedingType {
     BOTTLE
 }
 
+enum class DayEntryType {
+    TODAY,      // Daily overview/journal
+    CHECKLIST,  // Checklist item (e.g., "Pack backpack", "Prepare clothes")
+    REMINDER    // General reminder (e.g., "Parent meeting", "Excursion")
+}

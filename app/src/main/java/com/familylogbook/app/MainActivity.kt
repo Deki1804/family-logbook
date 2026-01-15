@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import java.net.URLDecoder
+import android.content.pm.PackageManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -20,14 +21,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Alignment
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -71,6 +71,9 @@ import com.familylogbook.app.ui.screen.OnboardingScreen
 import com.familylogbook.app.ui.screen.SettingsScreen
 import com.familylogbook.app.ui.screen.StatsScreen
 import com.familylogbook.app.ui.screen.SplashScreen
+import com.familylogbook.app.ui.screen.WelcomeScreen
+import com.familylogbook.app.ui.screen.DayTabScreen
+import com.familylogbook.app.ui.screen.ChildTabScreen
 import com.familylogbook.app.ui.theme.FamilyOSTheme
 import com.familylogbook.app.ui.viewmodel.AddEntryViewModel
 import com.familylogbook.app.ui.viewmodel.HomeViewModel
@@ -129,6 +132,13 @@ sealed class BottomNavItem(
     val title: String,
     val icon: ImageVector
 ) {
+    // Parent OS Main Tabs
+    object Health : BottomNavItem(Screen.Health.route, "Zdravlje", Icons.Default.LocalHospital)
+    object Day : BottomNavItem(Screen.Day.route, "Dan", Icons.Default.CheckCircle)
+    object Child : BottomNavItem(Screen.Child.route, "Dijete", Icons.Default.ChildCare)
+    object Insights : BottomNavItem(Screen.Insights.route, "Uvid", Icons.Default.Insights)
+    
+    // Legacy (kept for backward compatibility)
     object Home : BottomNavItem(Screen.Home.route, "Početna", Icons.Default.Home)
     object Stats : BottomNavItem(Screen.Stats.route, "Statistika", Icons.Default.ShowChart)
     object Settings : BottomNavItem(Screen.Settings.route, "Postavke", Icons.Default.Settings)
@@ -147,29 +157,21 @@ fun SplashScreenWrapper(
     var authError by remember { mutableStateOf(false) }
     val context = LocalContext.current
     
-    // Handle auth initialization in LaunchedEffect (proper @Composable context)
-    LaunchedEffect(Unit) {
-        try {
-            // Small delay for splash screen visibility
-            kotlinx.coroutines.delay(500)
-            
-            // Ensure user is signed in (async, no blocking)
-            val userId = authManager.ensureSignedIn()
-            val currentUser = FirebaseAuth.getInstance().currentUser
-            android.util.Log.d("SplashScreenWrapper", "User signed in - userId: $userId, auth uid: ${currentUser?.uid}, isAnonymous: ${currentUser?.isAnonymous}")
-            
-            // Verify userId matches auth uid
-            if (currentUser != null && currentUser.uid != userId) {
-                android.util.Log.e("SplashScreenWrapper", "WARNING: userId mismatch! Repository: $userId, Auth: ${currentUser.uid}")
-            }
+    // Function to initialize repository based on auth state
+    fun initializeRepository() {
+        val currentUser = FirebaseAuth.getInstance().currentUser
+        
+        if (currentUser != null) {
+            // User is signed in - use Firestore repository
+            android.util.Log.d("SplashScreenWrapper", "Initializing Firestore repository - userId: ${currentUser.uid}, isAnonymous: ${currentUser.isAnonymous}")
             
             // Store userId in shared preferences for ReminderWorker
             context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
                 .edit()
-                .putString("user_id", userId)
+                .putString("user_id", currentUser.uid)
                 .apply()
             
-            // Initialize repository (no userId needed - it uses FirebaseAuth dynamically)
+            // Initialize Firestore repository
             val repo = try {
                 FirestoreLogbookRepository()
             } catch (e: Exception) {
@@ -178,26 +180,44 @@ fun SplashScreenWrapper(
                 InMemoryLogbookRepository()
             }
             
-            // Sample data seeding disabled - users start with empty database
-            
-            // Small delay to show completion
-            kotlinx.coroutines.delay(300)
-            
             repository = repo
+        } else {
+            // No user signed in - use in-memory repository for Welcome screen
+            android.util.Log.d("SplashScreenWrapper", "No user signed in - using in-memory repository")
+            repository = InMemoryLogbookRepository()
+        }
+    }
+    
+    // Handle initial auth initialization
+    LaunchedEffect(Unit) {
+        try {
+            // Small delay for splash screen visibility
+            kotlinx.coroutines.delay(500)
+            initializeRepository()
+            kotlinx.coroutines.delay(300) // Small delay to show completion
         } catch (e: Exception) {
-            android.util.Log.e("SplashScreenWrapper", "Auth failed, using in-memory repository", e)
+            android.util.Log.e("SplashScreenWrapper", "Initialization failed, using in-memory repository", e)
             repository = InMemoryLogbookRepository()
             authError = true
         }
     }
     
+    // Watch for auth state changes and re-initialize repository if needed
+    // This ensures that when user signs in (guest or login), repository switches to Firestore
+    LaunchedEffect(authManager.getCurrentUserId()) {
+        val currentUser = FirebaseAuth.getInstance().currentUser
+        val currentRepo = repository
+        
+        // If user is now signed in but we're using InMemory repository, switch to Firestore
+        if (currentUser != null && currentRepo is InMemoryLogbookRepository) {
+            android.util.Log.d("SplashScreenWrapper", "User signed in - switching from InMemory to Firestore repository")
+            initializeRepository()
+        }
+    }
+    
     // Show splash screen while loading
     if (repository == null && !authError) {
-        SplashScreen(
-            authManager = authManager,
-            onAuthReady = { /* Not used - handled in LaunchedEffect above */ },
-            onError = { /* Not used - handled in LaunchedEffect above */ }
-        )
+        SplashScreen()
     }
     
     // Render content when repository is ready
@@ -224,8 +244,54 @@ fun FamilyOSApp(
     }
     val persons by settingsViewModel.persons.collectAsState()
     
+    // Track auth state to refresh ViewModels after account linking
+    val currentAuthUserId = remember { mutableStateOf(authManager?.getCurrentUserId()) }
+    
+    // Listen to auth state changes and refresh ViewModels when user ID changes
+    DisposableEffect(authManager) {
+        val authStateListener = authManager?.let { auth ->
+            com.google.firebase.auth.FirebaseAuth.AuthStateListener { firebaseAuth ->
+                val newUserId = firebaseAuth.currentUser?.uid
+                if (newUserId != null && newUserId != currentAuthUserId.value) {
+                    // User ID changed (e.g., after account linking) - refresh all ViewModels
+                    android.util.Log.d("FamilyOSApp", "Auth state changed - refreshing ViewModels. Old: ${currentAuthUserId.value}, New: $newUserId")
+                    currentAuthUserId.value = newUserId
+                    // Note: Individual ViewModels will be refreshed when they're accessed
+                    // The repository uses getCurrentUserId() dynamically, so it should work
+                    // But we can trigger a refresh by accessing the ViewModels
+                    settingsViewModel.refreshAllData()
+                }
+            }
+        }
+        
+        authStateListener?.let {
+            com.google.firebase.auth.FirebaseAuth.getInstance().addAuthStateListener(it)
+        }
+        
+        onDispose {
+            authStateListener?.let {
+                com.google.firebase.auth.FirebaseAuth.getInstance().removeAuthStateListener(it)
+            }
+        }
+    }
+    
     val sharedPrefs = remember { 
         context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE) 
+    }
+    
+    // Check if user is signed in (reactive - updates when auth state changes)
+    val isUserSignedIn = remember { 
+        mutableStateOf(authManager?.getCurrentUser() != null) 
+    }
+    
+    // Update isUserSignedIn when auth state changes
+    LaunchedEffect(authManager?.getCurrentUser()?.uid) {
+        isUserSignedIn.value = authManager?.getCurrentUser() != null
+    }
+    
+    // Check if welcome screen was shown
+    val welcomeShown = remember { 
+        mutableStateOf(sharedPrefs.getBoolean("welcome_shown", false)) 
     }
     
     // Reactive state for onboarding completion
@@ -251,22 +317,47 @@ fun FamilyOSApp(
         }
     }
     
+    // Determine if welcome screen is needed
+    // Show welcome screen if it hasn't been shown yet (regardless of auth state)
+    // This ensures welcome is shown even if user is already signed in from previous session
+    val needsWelcome = remember(welcomeShown.value) { 
+        !welcomeShown.value
+    }
+    
     // Determine if onboarding is needed
-    val needsOnboarding = remember(onboardingCompleted, persons) { 
-        !onboardingCompleted && persons.isEmpty()
+    val needsOnboarding = remember(onboardingCompleted, persons, isUserSignedIn.value) { 
+        isUserSignedIn.value && !onboardingCompleted && persons.isEmpty()
+    }
+    
+    // Navigate to welcome if needed (only on initial load, not when user is navigating)
+    LaunchedEffect(needsWelcome) {
+        if (needsWelcome && currentRoute == null) {
+            // Only navigate if we're at the initial state (no route yet)
+            // Don't interfere with user-initiated navigation
+            navController.navigate(Screen.Welcome.route) {
+                popUpTo(0) { inclusive = true }
+            }
+        }
     }
     
     // Navigate to onboarding if needed (but don't force if already on onboarding)
     LaunchedEffect(needsOnboarding, currentRoute) {
-        if (needsOnboarding && currentRoute != Screen.Onboarding.route && currentRoute != null) {
+        if (needsOnboarding && currentRoute != Screen.Onboarding.route && currentRoute != null && currentRoute != Screen.Welcome.route) {
             navController.navigate(Screen.Onboarding.route) {
-                popUpTo(0) { inclusive = true }
+                popUpTo(Screen.Welcome.route) { inclusive = false }
             }
         }
     }
     
     // Check and request notification permission for Android 13+
     val notificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
+    val hasPostNotificationsPermission = remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+    }
     
     val requestPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -281,31 +372,45 @@ fun FamilyOSApp(
     // Request notification permission on first launch (Android 13+)
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (!notificationsEnabled) {
+            if (!hasPostNotificationsPermission) {
                 requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else if (!notificationsEnabled) {
+                // Permission is granted, but notifications are disabled at system/app level.
+                // User can enable it later in system settings.
+                android.util.Log.w("FamilyOSApp", "Notifications are disabled in system settings")
             }
         }
     }
     
+    // Parent OS Main Tabs
     val bottomNavItems = listOf(
-        BottomNavItem.Home,
-        BottomNavItem.Stats,
-        BottomNavItem.Settings
+        BottomNavItem.Health,
+        BottomNavItem.Day,
+        BottomNavItem.Child,
+        BottomNavItem.Insights
     )
     
     Scaffold(
         bottomBar = {
-            // Check if current route starts with any of the main routes (to handle query params)
-            val isMainRoute = currentRoute?.startsWith(Screen.Home.route) == true ||
-                    currentRoute == Screen.Stats.route ||
-                    currentRoute == Screen.Settings.route
+            // Show navigation bar for main tabs (not for detail screens, settings, etc.)
+            val isMainTabRoute = currentRoute == Screen.Health.route ||
+                    currentRoute == Screen.Day.route ||
+                    currentRoute == Screen.Child.route ||
+                    currentRoute == Screen.Insights.route ||
+                    // Legacy routes (backward compatibility)
+                    currentRoute?.startsWith(Screen.Home.route) == true ||
+                    currentRoute == Screen.Stats.route
             
-            if (isMainRoute) {
+            if (isMainTabRoute) {
                 NavigationBar {
                     bottomNavItems.forEach { item ->
-                        // Check if current route matches this item (handle query params for Home)
                         val isSelected = when {
-                            item.route == Screen.Home.route -> currentRoute?.startsWith(Screen.Home.route) == true
+                            // Handle legacy Home route mapping to Health
+                            item.route == Screen.Health.route -> 
+                                currentRoute == Screen.Health.route || currentRoute?.startsWith(Screen.Home.route) == true
+                            // Handle legacy Stats route mapping to Insights
+                            item.route == Screen.Insights.route -> 
+                                currentRoute == Screen.Insights.route || currentRoute == Screen.Stats.route
                             else -> currentRoute == item.route
                         }
                         
@@ -313,7 +418,8 @@ fun FamilyOSApp(
                             selected = isSelected,
                             onClick = {
                                 navController.navigate(item.route) {
-                                    popUpTo(Screen.Home.route) {
+                                    // Pop to Health tab (or first tab) when switching tabs
+                                    popUpTo(Screen.Health.route) {
                                         saveState = true
                                     }
                                     launchSingleTop = true
@@ -335,27 +441,180 @@ fun FamilyOSApp(
     ) { paddingValues ->
         NavHost(
             navController = navController,
-            startDestination = if (needsOnboarding) Screen.Onboarding.route else Screen.Home.route,
+            startDestination = when {
+                needsWelcome -> Screen.Welcome.route
+                needsOnboarding -> Screen.Onboarding.route
+                else -> Screen.Health.route
+            },
             modifier = Modifier.padding(paddingValues)
         ) {
+            // Welcome/Auth screen - first screen for new users
+            composable(Screen.Welcome.route) {
+                val scope = rememberCoroutineScope()
+                
+                WelcomeScreen(
+                    authManager = authManager,
+                    onSignInClick = {
+                        android.util.Log.d("WelcomeScreen", "Sign in button clicked")
+                        try {
+                            android.util.Log.d("WelcomeScreen", "Navigating to Login screen: ${Screen.Login.route}")
+                            navController.navigate(Screen.Login.route) {
+                                // Don't pop Welcome screen - user might want to go back
+                                launchSingleTop = true
+                            }
+                            android.util.Log.d("WelcomeScreen", "Navigation command sent")
+                        } catch (e: Exception) {
+                            android.util.Log.e("WelcomeScreen", "Navigation failed", e)
+                        }
+                    },
+                    onContinueAsGuest = {
+                        android.util.Log.d("WelcomeScreen", "Continue as guest button clicked")
+                        // Mark welcome as shown
+                        sharedPrefs.edit()
+                            .putBoolean("welcome_shown", true)
+                            .commit()
+                        welcomeShown.value = true
+                        
+                        scope.launch(Dispatchers.Main) {
+                            try {
+                                // Ensure user is signed in (will use existing session if available)
+                                authManager?.ensureSignedIn()
+                                isUserSignedIn.value = true
+                                
+                                // Check if user already has data (existing user)
+                                val hasData = sharedPrefs.getBoolean("onboarding_completed", false) || persons.isNotEmpty()
+                                
+                                if (hasData) {
+                                    // Existing user - go directly to Health screen
+                                    navController.navigate(Screen.Health.route) {
+                                        popUpTo(Screen.Welcome.route) { inclusive = true }
+                                    }
+                                } else {
+                                    // New user - go to onboarding
+                                    navController.navigate(Screen.Onboarding.route) {
+                                        popUpTo(Screen.Welcome.route) { inclusive = true }
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                android.util.Log.e("FamilyOSApp", "Failed to sign in anonymously", e)
+                            }
+                        }
+                    }
+                )
+            }
+            
             // Onboarding screen
             composable(Screen.Onboarding.route) {
                 OnboardingScreen(
                     settingsViewModel = settingsViewModel,
                     onComplete = {
-                        navController.navigate(Screen.Home.route) {
+                        navController.navigate(Screen.Health.route) {
                             popUpTo(0) { inclusive = true }
                         }
                     },
                     onSkip = {
-                        navController.navigate(Screen.Home.route) {
+                        navController.navigate(Screen.Health.route) {
                             popUpTo(0) { inclusive = true }
                         }
                     }
                 )
             }
             
-            // Home route with optional category and person filters
+            // Parent OS Health Tab (main entry point)
+            composable(
+                route = "${Screen.Health.route}?category={category}&person={person}",
+                arguments = listOf(
+                    navArgument("category") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                        nullable = true
+                    },
+                    navArgument("person") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                        nullable = true
+                    }
+                )
+            ) { backStackEntry ->
+                // Use activity scope to share ViewModel instance with advice_detail screen
+                val activity = LocalContext.current as? ComponentActivity
+                val context = LocalContext.current
+                val viewModel: HomeViewModel = if (activity != null) {
+                    viewModel(
+                        viewModelStoreOwner = activity
+                    ) {
+                        HomeViewModel(repository, context)
+                    }
+                } else {
+                    viewModel { HomeViewModel(repository, context) }
+                }
+                
+                // Set category and person filters if provided
+                val categoryParam = backStackEntry.arguments?.getString("category")
+                val personParam = backStackEntry.arguments?.getString("person")
+                
+                androidx.compose.runtime.LaunchedEffect(categoryParam, personParam) {
+                    if (!categoryParam.isNullOrEmpty()) {
+                        try {
+                            val category = com.familylogbook.app.domain.model.Category.valueOf(categoryParam)
+                            viewModel.setSelectedCategory(category)
+                        } catch (e: Exception) {
+                            // Invalid category, ignore
+                        }
+                    }
+                    if (!personParam.isNullOrEmpty()) {
+                        viewModel.setSelectedPerson(personParam)
+                    }
+                }
+                
+                // Filter to show only health-related categories
+                androidx.compose.runtime.LaunchedEffect(Unit) {
+                    // Set default filter to health categories
+                    viewModel.setSelectedCategory(null) // Clear any previous filter
+                }
+                
+                HomeScreen(
+                    viewModel = viewModel,
+                    onNavigateToAddEntry = {
+                        navController.navigate(Screen.AddEntry.route)
+                    },
+                    onNavigateToAddEntryWithText = { text ->
+                        navController.navigate("${Screen.AddEntry.route}?text=${Uri.encode(text)}")
+                    },
+                    onNavigateToEditEntry = { entryId ->
+                        navController.navigate("${Screen.AddEntry.route}?entryId=$entryId")
+                    },
+                    onNavigateToEntryDetail = { entryId ->
+                        navController.navigate(Screen.EntryDetail.createRoute(entryId))
+                    },
+                    onNavigateToPersonProfile = { personId ->
+                        navController.navigate(Screen.PersonProfile.createRoute(personId))
+                    },
+                    onNavigateToEntityProfile = { entityId ->
+                        navController.navigate(Screen.EntityProfile.createRoute(entityId))
+                    },
+                    onNavigateToCategoryDetail = { category ->
+                        navController.navigate("category_detail/${category.name}")
+                    },
+                    onNavigateToAdvice = {},
+                    onNavigateToAdviceDetail = { advice ->
+                        android.util.Log.d("MainActivity", "Navigating to advice detail: ${advice.id}, title: ${advice.title}")
+                        viewModel.setCurrentAdvice(advice)
+                        val adviceSet = viewModel.currentAdvice.value
+                        android.util.Log.d("MainActivity", "Advice set in ViewModel: ${adviceSet?.id}, same instance: ${adviceSet === advice}")
+                        if (adviceSet != null) {
+                            navController.navigate("advice_detail?adviceId=${advice.id}")
+                        } else {
+                            android.util.Log.e("MainActivity", "Failed to set advice in ViewModel!")
+                        }
+                    },
+                    onNavigateToSettings = {
+                        navController.navigate(Screen.Settings.route)
+                    }
+                )
+            }
+            
+            // Legacy Home route (backward compatibility - maps to Health tab)
             composable(
                 route = "${Screen.Home.route}?category={category}&person={person}",
                 arguments = listOf(
@@ -534,7 +793,8 @@ fun FamilyOSApp(
                 )
             }
             
-            composable(Screen.Stats.route) {
+            // Parent OS Insights Tab
+            composable(Screen.Insights.route) {
                 val context = LocalContext.current
                 val statsViewModel: StatsViewModel = viewModel {
                     StatsViewModel(repository)
@@ -549,17 +809,86 @@ fun FamilyOSApp(
                 StatsScreen(
                     viewModel = statsViewModel,
                     onCategoryClick = { category ->
-                        // Build navigation URL with category and optional person filter
+                        // Navigate to Health tab with category filter
                         val personParam = if (selectedPersonId != null) "&person=$selectedPersonId" else ""
-                        navController.navigate("home?category=${category.name}$personParam") {
-                            // Clear back stack so back button doesn't go to Stats
-                            popUpTo(Screen.Home.route) {
+                        navController.navigate("${Screen.Health.route}?category=${category.name}$personParam") {
+                            popUpTo(Screen.Health.route) {
                                 inclusive = false
                             }
                             launchSingleTop = true
-                            // Don't restore scroll state when navigating with filter - always start from top
                             restoreState = false
                         }
+                    },
+                    onNavigateToSettings = {
+                        navController.navigate(Screen.Settings.route)
+                    }
+                )
+            }
+            
+            // Legacy Stats route (backward compatibility - maps to Insights tab)
+            composable(Screen.Stats.route) {
+                val context = LocalContext.current
+                val statsViewModel: StatsViewModel = viewModel {
+                    StatsViewModel(repository)
+                }
+                val homeViewModel: HomeViewModel = viewModel {
+                    HomeViewModel(repository, context)
+                }
+                
+                val selectedPersonId by homeViewModel.selectedPersonId.collectAsState()
+                
+                StatsScreen(
+                    viewModel = statsViewModel,
+                    onCategoryClick = { category ->
+                        val personParam = if (selectedPersonId != null) "&person=$selectedPersonId" else ""
+                        navController.navigate("${Screen.Health.route}?category=${category.name}$personParam") {
+                            popUpTo(Screen.Health.route) {
+                                inclusive = false
+                            }
+                            launchSingleTop = true
+                            restoreState = false
+                        }
+                    },
+                    onNavigateToSettings = {
+                        navController.navigate(Screen.Settings.route)
+                    }
+                )
+            }
+            
+            // Parent OS Day Tab
+            composable(Screen.Day.route) {
+                val context = LocalContext.current
+                val viewModel: HomeViewModel = viewModel {
+                    HomeViewModel(repository, context)
+                }
+                
+                DayTabScreen(
+                    viewModel = viewModel,
+                    onNavigateToAddEntry = {
+                        navController.navigate(Screen.AddEntry.route)
+                    },
+                    onNavigateToEntryDetail = { entryId ->
+                        navController.navigate(Screen.EntryDetail.createRoute(entryId))
+                    },
+                    onNavigateToSettings = {
+                        navController.navigate(Screen.Settings.route)
+                    }
+                )
+            }
+            
+            // Parent OS Child Tab (placeholder - will be implemented in next phase)
+            composable(Screen.Child.route) {
+                val context = LocalContext.current
+                val viewModel: HomeViewModel = viewModel {
+                    HomeViewModel(repository, context)
+                }
+                ChildTabScreen(
+                    viewModel = viewModel,
+                    onNavigateToPersonProfile = { personId ->
+                        navController.navigate(Screen.PersonProfile.createRoute(personId))
+                    },
+                    onNavigateToSettings = {
+                        navController.navigate(Screen.Settings.route)
                     }
                 )
             }
@@ -688,12 +1017,34 @@ fun FamilyOSApp(
             }
             
             composable(Screen.Login.route) {
+                val scope = rememberCoroutineScope()
                 authManager?.let { auth ->
                     LoginScreen(
                         authManager = auth,
                         isAnonymous = auth.isAnonymous(),
                         onUpgradeSuccess = {
-                            navController.popBackStack()
+                            // Mark welcome as shown
+                            sharedPrefs.edit()
+                                .putBoolean("welcome_shown", true)
+                                .commit()
+                            welcomeShown.value = true
+                            isUserSignedIn.value = true
+                            
+                            // Small delay to ensure auth state is updated
+                            // Must use Main dispatcher for navigation operations
+                            scope.launch(Dispatchers.Main) {
+                                kotlinx.coroutines.delay(500)
+                                // Navigate to onboarding if needed, otherwise to Health
+                                if (needsOnboarding) {
+                                    navController.navigate(Screen.Onboarding.route) {
+                                        popUpTo(Screen.Welcome.route) { inclusive = true }
+                                    }
+                                } else {
+                                    navController.navigate(Screen.Health.route) {
+                                        popUpTo(Screen.Welcome.route) { inclusive = true }
+                                    }
+                                }
+                            }
                         },
                         onCancel = {
                             navController.popBackStack()

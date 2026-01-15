@@ -33,6 +33,14 @@ class SettingsViewModel(
     private val _entries = MutableStateFlow<List<LogEntry>>(emptyList())
     val entries: StateFlow<List<LogEntry>> = _entries.asStateFlow()
     
+    // Loading state
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+    
+    // Success message
+    private val _successMessage = MutableStateFlow<String?>(null)
+    val successMessage: StateFlow<String?> = _successMessage.asStateFlow()
+    
     private val _newChildName = MutableStateFlow("")
     val newChildName: StateFlow<String> = _newChildName.asStateFlow()
     
@@ -97,6 +105,17 @@ class SettingsViewModel(
                 _entries.value = entriesList
             }
         }
+    }
+    
+    /**
+     * Refreshes all data from repository.
+     * Call this after account linking to reload data with new user ID.
+     */
+    fun refreshAllData() {
+        loadChildren()
+        loadPersons()
+        loadEntities()
+        loadEntries()
     }
     
     fun setNewChildName(name: String) {
@@ -175,6 +194,9 @@ class SettingsViewModel(
             return false
         }
         
+        _isLoading.value = true
+        _successMessage.value = null
+        
         return try {
             val colors = listOf("#FF6B6B", "#4ECDC4", "#FF6B9D", "#95E1D3", "#F38181", "#AA96DA", "#FCBAD3", "#A8E6CF")
             val randomColor = colors.random()
@@ -196,11 +218,23 @@ class SettingsViewModel(
             _newPersonEmoji.value = "👶"
             _newPersonDateOfBirth.value = null
             
+            _successMessage.value = "✅ Osoba uspješno dodana!"
+            _isLoading.value = false
+            
+            // Clear success message after 3 seconds
+            kotlinx.coroutines.delay(3000)
+            _successMessage.value = null
+            
             true
         } catch (e: Exception) {
             android.util.Log.e("SettingsViewModel", "Error adding person: ${e.message}")
+            _isLoading.value = false
             false
         }
+    }
+    
+    fun clearSuccessMessage() {
+        _successMessage.value = null
     }
     
     suspend fun deletePerson(personId: String): Boolean {
@@ -247,6 +281,9 @@ class SettingsViewModel(
             return false
         }
         
+        _isLoading.value = true
+        _successMessage.value = null
+        
         return try {
             val colors = listOf("#FF6B6B", "#4ECDC4", "#FF6B9D", "#95E1D3", "#F38181", "#AA96DA", "#FCBAD3", "#A8E6CF")
             val randomColor = colors.random()
@@ -265,9 +302,17 @@ class SettingsViewModel(
             _newEntityType.value = EntityType.OTHER
             _newEntityEmoji.value = "🚗"
             
+            _successMessage.value = "✅ Entitet uspješno dodan!"
+            _isLoading.value = false
+            
+            // Clear success message after 3 seconds
+            kotlinx.coroutines.delay(3000)
+            _successMessage.value = null
+            
             true
         } catch (e: Exception) {
             android.util.Log.e("SettingsViewModel", "Error adding entity: ${e.message}")
+            _isLoading.value = false
             false
         }
     }
